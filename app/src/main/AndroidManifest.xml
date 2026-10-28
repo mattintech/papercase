@@ -33,6 +33,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Secure Document Locker Activities -->
+        <activity
+            android:name=".locker.ui.AddDocumentActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".locker.ui.DocumentViewerActivity"
+            android:exported="false" />
+
         <!-- Trampoline activity to clear clipboard with focused activity access -->
         <activity
             android:name=".clipboard.ClearClipboardActivity"
@@ -63,6 +73,17 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <!-- Secure File Provider for document export/share -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

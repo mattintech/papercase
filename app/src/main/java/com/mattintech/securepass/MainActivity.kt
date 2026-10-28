@@ -9,11 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.security.keystore.KeyPermanentlyInvalidatedException
-import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -22,9 +20,8 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import com.mattintech.securepass.clipboard.ClipboardSecurityManager
 import com.mattintech.securepass.crypto.BiometricAuthHelper
 import com.mattintech.securepass.crypto.KeystoreHelper
@@ -32,6 +29,12 @@ import com.mattintech.securepass.data.PreferencesManager
 import com.mattintech.securepass.databinding.ActivityMainBinding
 import com.mattintech.securepass.databinding.DialogSetPassphraseBinding
 import com.mattintech.securepass.databinding.DialogViewPassphraseBinding
+import com.mattintech.securepass.locker.model.DocumentType
+import com.mattintech.securepass.locker.model.SecureDocument
+import com.mattintech.securepass.locker.repository.SecureLockerRepository
+import com.mattintech.securepass.locker.ui.AddDocumentActivity
+import com.mattintech.securepass.locker.ui.DocumentViewerActivity
+import com.mattintech.securepass.locker.ui.SecureDocumentsAdapter
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -42,6 +45,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
+    private lateinit var lockerRepository: SecureLockerRepository
+    private lateinit var documentsAdapter: SecureDocumentsAdapter
+
+    private var allDocuments: List<SecureDocument> = emptyList()
+    private var isLockerUnlocked = false
     private var hasHandledAutoLaunch = false
 
     private val requestNotificationPermissionLauncher =
@@ -55,10 +63,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         prefs = PreferencesManager(this)
+        lockerRepository = SecureLockerRepository(this)
 
-        setupUI()
         setupWindowInsets()
+        setupUI()
         setupListeners()
+        setupLocker()
         observeClipboardState()
         checkNotificationPermission()
 
@@ -71,6 +81,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         ClipboardSecurityManager.checkAndClearIfExpired(this)
         updateVaultStatusUI()
+        if (isLockerUnlocked && binding.layoutSecureLocker.visibility == View.VISIBLE) {
+            loadSecureLockerDocuments()
+        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -114,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                 right = statusBarInsets.right
             )
             val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-            binding.nestedScrollView.updatePadding(
+            binding.bottomNavigation.updatePadding(
                 bottom = navBarInsets.bottom,
                 left = navBarInsets.left,
                 right = navBarInsets.right
@@ -204,6 +217,132 @@ class MainActivity : AppCompatActivity() {
             }
             prefs.clearTimeoutSeconds = seconds
         }
+
+        // Bottom Navigation
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_passphrase -> {
+                    showPassphraseVaultTab()
+                    true
+                }
+                R.id.nav_locker -> {
+                    checkAndShowLockerTab()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun setupLocker() {
+        documentsAdapter = SecureDocumentsAdapter(
+            onItemClick = { doc ->
+                DocumentViewerActivity.start(this, doc.id)
+            },
+            onCopyNumber = { doc ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Document Number", doc.documentNumber))
+                Toast.makeText(this, "Copied ${doc.documentNumber}", Toast.LENGTH_SHORT).show()
+            }
+        )
+
+        binding.rvSecureDocuments.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = documentsAdapter
+        }
+
+        binding.fabAddDocument.setOnClickListener {
+            AddDocumentActivity.start(this)
+        }
+
+        binding.btnAddFirstDocument.setOnClickListener {
+            AddDocumentActivity.start(this)
+        }
+
+        // Filter chips
+        binding.chipGroupLockerFilter.setOnCheckedStateChangeListener { _, checkedIds ->
+            val filterType: DocumentType? = when (checkedIds.firstOrNull()) {
+                R.id.filterLicense -> DocumentType.DRIVERS_LICENSE
+                R.id.filterPassport -> DocumentType.PASSPORT
+                R.id.filterIdCards -> DocumentType.ID_CARD
+                R.id.filterDocs -> DocumentType.PDF_DOCUMENT
+                else -> null
+            }
+            filterDocuments(filterType)
+        }
+    }
+
+    private fun showPassphraseVaultTab() {
+        binding.nestedScrollView.visibility = View.VISIBLE
+        binding.layoutSecureLocker.visibility = View.GONE
+        binding.toolbar.title = getString(R.string.app_name)
+    }
+
+    private fun checkAndShowLockerTab() {
+        if (isLockerUnlocked) {
+            displayLockerTab()
+            return
+        }
+
+        // Biometric challenge to unlock personal vault (OneDrive Personal Vault style)
+        val status = BiometricAuthHelper.checkBiometricAvailability(this)
+        if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
+            isLockerUnlocked = true
+            displayLockerTab()
+            return
+        }
+
+        try {
+            val encryptCipher = KeystoreHelper.initEncryptCipher()
+            BiometricAuthHelper.promptBiometricWithCrypto(
+                activity = this,
+                title = "Unlock Secure Locker",
+                subtitle = "Confirm fingerprint to access your passport, license & documents",
+                cipher = encryptCipher,
+                onSuccess = {
+                    isLockerUnlocked = true
+                    displayLockerTab()
+                },
+                onError = { _, _ ->
+                    // Revert tab back to passphrase
+                    binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+                }
+            )
+        } catch (e: Exception) {
+            isLockerUnlocked = true
+            displayLockerTab()
+        }
+    }
+
+    private fun displayLockerTab() {
+        binding.nestedScrollView.visibility = View.GONE
+        binding.layoutSecureLocker.visibility = View.VISIBLE
+        binding.toolbar.title = "Secure Locker"
+        loadSecureLockerDocuments()
+    }
+
+    private fun loadSecureLockerDocuments() {
+        lifecycleScope.launch {
+            allDocuments = lockerRepository.getAllDocuments()
+            filterDocuments(null)
+        }
+    }
+
+    private fun filterDocuments(type: DocumentType?) {
+        val filtered = if (type == null) {
+            allDocuments
+        } else {
+            allDocuments.filter { it.type == type }
+        }
+
+        documentsAdapter.submitList(filtered)
+        if (filtered.isEmpty()) {
+            binding.cardEmptyLocker.visibility = View.VISIBLE
+            binding.rvSecureDocuments.visibility = View.GONE
+        } else {
+            binding.cardEmptyLocker.visibility = View.GONE
+            binding.rvSecureDocuments.visibility = View.VISIBLE
+        }
     }
 
     private fun updateVaultStatusUI() {
@@ -287,7 +426,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 onError = { errorCode, errorMsg ->
-                    if (errorCode != 13) { // 13 = BiometricPrompt.ERROR_NEGATIVE_BUTTON (User cancelled)
+                    if (errorCode != 13) {
                         Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_SHORT).show()
                     }
                 }
