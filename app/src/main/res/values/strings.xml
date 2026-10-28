@@ -1,0 +1,59 @@
+<resources>
+    <string name="app_name">SecurePass</string>
+    <string name="app_tagline">Biometric vault for KeePass2Android</string>
+
+    <!-- Status -->
+    <string name="status_protected">Passphrase Secured</string>
+    <string name="status_protected_desc">Hardware-encrypted &amp; protected by biometric fingerprint</string>
+    <string name="status_not_set">No Passphrase Configured</string>
+    <string name="status_not_set_desc">Store your master passphrase here so you don\'t have to type it on mobile</string>
+
+    <!-- Actions -->
+    <string name="btn_unlock_copy">Unlock &amp; Copy Passphrase</string>
+    <string name="btn_set_passphrase">Set Master Passphrase</string>
+    <string name="btn_edit_passphrase">Change Passphrase</string>
+    <string name="btn_view_passphrase">View</string>
+    <string name="btn_delete_passphrase">Remove</string>
+    <string name="btn_clear_clipboard">Clear Clipboard Now</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_save">Save Passphrase</string>
+
+    <!-- Clipboard -->
+    <string name="clipboard_copied">Passphrase copied to clipboard!</string>
+    <string name="clipboard_cleared">Clipboard cleared.</string>
+    <string name="clipboard_active_desc">Passphrase in clipboard • Clearing in %1$ds</string>
+    <string name="clipboard_not_active">Clipboard is clear</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Automation &amp; Security</string>
+    <string name="setting_auto_copy_title">Auto-Copy on App Launch</string>
+    <string name="setting_auto_copy_desc">Prompt for fingerprint immediately when opening SecurePass and copy passphrase</string>
+    <string name="setting_auto_minimize_title">Auto-Minimize After Copy</string>
+    <string name="setting_auto_minimize_desc">Send SecurePass to the background immediately so you can paste straight into KeePass2Android</string>
+    <string name="setting_auto_clear_title">Auto-Clear Clipboard</string>
+    <string name="setting_auto_clear_desc">Erase the passphrase from clipboard after timeout to prevent unauthorized paste</string>
+    <string name="setting_timeout_title">Clear Timeout</string>
+
+    <!-- How-to / Tips -->
+    <string name="guide_title">KeePass2Android + FIDO Setup</string>
+    <string name="guide_body">1. Store your long, high-entropy master passphrase in SecurePass.\n2. In KeePass2Android, keep your database protected by Master Password + Hardware FIDO/YubiKey.\n3. When KeePass2Android prompts for your passphrase, simply open SecurePass (or tap the Quick Settings Tile), tap your fingerprint, and paste directly into KeePass2Android!\n4. SecurePass will wipe the clipboard after 10 seconds.</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_label">SecurePass</string>
+    <string name="tile_copy_prompt">Copy Passphrase</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_name">Clipboard Security</string>
+    <string name="notification_channel_desc">Notifications for clipboard timeout and security</string>
+    <string name="notification_title">Passphrase on Clipboard</string>
+    <string name="notification_text">Tap button to erase immediately</string>
+    <string name="notification_action_clear">Clear Clipboard Now</string>
+
+    <!-- Biometric Dialogs -->
+    <string name="biometric_copy_title">Unlock Passphrase</string>
+    <string name="biometric_copy_subtitle">Confirm fingerprint to copy master passphrase</string>
+    <string name="biometric_view_title">View Passphrase</string>
+    <string name="biometric_view_subtitle">Confirm fingerprint to view master passphrase</string>
+    <string name="biometric_save_title">Save Passphrase</string>
+    <string name="biometric_save_subtitle">Confirm fingerprint to encrypt passphrase with hardware key</string>
+</resources>
