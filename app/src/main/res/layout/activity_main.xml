@@ -7,6 +7,7 @@
     android:background="?android:attr/colorBackground">
 
     <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?android:attr/colorBackground"
@@ -36,6 +37,7 @@
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/nestedScrollView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
@@ -138,12 +140,11 @@
 
                         <ImageView
                             android:id="@+id/ivVaultIcon"
-                            android:layout_width="44dp"
-                            android:layout_height="44dp"
-                            android:background="@drawable/ic_launcher_background"
-                            android:backgroundTint="?attr/colorPrimaryContainer"
-                            android:padding="8dp"
-                            android:src="@drawable/ic_shield_check"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:background="@drawable/bg_icon_circle"
+                            android:padding="10dp"
+                            android:src="@drawable/ic_shield_lock"
                             app:tint="?attr/colorPrimary" />
 
                         <LinearLayout

@@ -16,6 +16,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -54,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         prefs = PreferencesManager(this)
 
         setupUI()
+        setupWindowInsets()
         setupListeners()
         observeClipboardState()
         checkNotificationPermission()
@@ -95,6 +99,26 @@ class MainActivity : AppCompatActivity() {
             ) {
                 requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+    }
+
+    private fun setupWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val statusBarInsets = insets.getInsets(
+                WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            binding.appBarLayout.updatePadding(
+                top = statusBarInsets.top,
+                left = statusBarInsets.left,
+                right = statusBarInsets.right
+            )
+            val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            binding.nestedScrollView.updatePadding(
+                bottom = navBarInsets.bottom,
+                left = navBarInsets.left,
+                right = navBarInsets.right
+            )
+            insets
         }
     }
 
@@ -186,7 +210,7 @@ class MainActivity : AppCompatActivity() {
         if (hasPass) {
             binding.tvVaultTitle.text = getString(R.string.status_protected)
             binding.tvVaultSubtitle.text = getString(R.string.status_protected_desc)
-            binding.ivVaultIcon.setImageResource(R.drawable.ic_shield_check)
+            binding.ivVaultIcon.setImageResource(R.drawable.ic_shield_lock)
             binding.btnUnlockCopy.visibility = View.VISIBLE
             binding.layoutVaultActions.visibility = View.VISIBLE
             binding.btnInitialSetup.visibility = View.GONE
