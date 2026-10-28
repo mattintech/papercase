@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ClipboardSecurityManager.checkAndClearIfExpired(this)
         updateVaultStatusUI()
     }
 
