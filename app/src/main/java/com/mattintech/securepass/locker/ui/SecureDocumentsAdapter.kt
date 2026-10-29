@@ -61,11 +61,11 @@ class SecureDocumentsAdapter(
             val summary = doc.getSummaryText()
             if (summary.isNotBlank()) {
                 binding.tvAttachmentBadge.visibility = View.VISIBLE
-                binding.tvAttachmentBadge.text = "📎 $summary"
+                binding.tvAttachmentBadge.text = summary
             } else if (doc.attachments.isNotEmpty()) {
                 val count = doc.attachments.size
                 binding.tvAttachmentBadge.visibility = View.VISIBLE
-                binding.tvAttachmentBadge.text = "📎 $count ${if (count == 1) "attachment" else "attachments"}"
+                binding.tvAttachmentBadge.text = "$count ${if (count == 1) "attachment" else "attachments"}"
             } else {
                 binding.tvAttachmentBadge.visibility = View.GONE
             }

@@ -125,7 +125,7 @@
                         android:letterSpacing="0.08"
                         android:paddingHorizontal="12dp"
                         android:paddingVertical="4dp"
-                        android:text="🔒 HARDWARE ENCRYPTED"
+                        android:text="HARDWARE ENCRYPTED"
                         android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                         android:textColor="@color/status_protected_on_container"
                         android:textStyle="bold" />

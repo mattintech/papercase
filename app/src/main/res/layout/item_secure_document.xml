@@ -147,7 +147,7 @@
                 android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                 android:textColor="?attr/colorOnPrimaryContainer"
                 android:textStyle="bold"
-                tools:text="📎 2 files" />
+                tools:text="Front &amp; Back" />
 
         </LinearLayout>
 
