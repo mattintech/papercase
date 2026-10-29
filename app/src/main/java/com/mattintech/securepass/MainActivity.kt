@@ -28,25 +28,36 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.mattintech.securepass.auth.SessionManager
 import com.mattintech.securepass.clipboard.ClipboardSecurityManager
 import com.mattintech.securepass.crypto.BiometricAuthHelper
 import com.mattintech.securepass.crypto.KeystoreHelper
 import com.mattintech.securepass.data.PreferencesManager
 import com.mattintech.securepass.databinding.ActivityMainBinding
+import com.mattintech.securepass.databinding.DialogP2pSenderBinding
 import com.mattintech.securepass.databinding.DialogSetPassphraseBinding
+import com.mattintech.securepass.databinding.DialogSyncConflictsBinding
 import com.mattintech.securepass.databinding.DialogViewPassphraseBinding
 import com.mattintech.securepass.locker.model.DocumentType
 import com.mattintech.securepass.locker.model.SecureDocument
 import com.mattintech.securepass.locker.repository.SecureLockerRepository
+import com.mattintech.securepass.locker.transfer.ConflictResolutionStrategy
+import com.mattintech.securepass.locker.transfer.P2pNetworkHelper
+import com.mattintech.securepass.locker.transfer.P2pTransferClient
+import com.mattintech.securepass.locker.transfer.P2pTransferServer
 import com.mattintech.securepass.locker.transfer.QrCodeHelper
+import com.mattintech.securepass.locker.transfer.VaultConflictReport
 import com.mattintech.securepass.locker.transfer.VaultExportImportManager
 import com.mattintech.securepass.locker.ui.AddDocumentActivity
 import com.mattintech.securepass.locker.ui.DocumentViewerActivity
 import com.mattintech.securepass.locker.ui.SecureDocumentsAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -67,10 +78,27 @@ class MainActivity : AppCompatActivity() {
         }
     private var hasHandledAutoLaunch = false
     private var activeTokenInput: android.widget.EditText? = null
+    private var activeP2pServer: P2pTransferServer? = null
 
     private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
             // Notification permission handled
+        }
+
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                launchQrScanner()
+            } else {
+                Toast.makeText(this, "Camera permission required to scan QR code", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private val barcodeLauncher =
+        registerForActivityResult(ScanContract()) { result ->
+            if (result.contents != null) {
+                handleScannedQrContent(result.contents)
+            }
         }
 
     private val pickVaultFileLauncher =
@@ -87,11 +115,11 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val inputStream = contentResolver.openInputStream(uri)
                         val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                        val scannedToken = if (bitmap != null) QrCodeHelper.decodeQrCodeFromBitmap(bitmap) else null
+                        inputStream?.close()
+                        val scannedContent = if (bitmap != null) QrCodeHelper.decodeQrCodeFromBitmap(bitmap) else null
                         withContext(Dispatchers.Main) {
-                            if (scannedToken != null) {
-                                activeTokenInput?.setText(scannedToken)
-                                Toast.makeText(this@MainActivity, "Token scanned from QR code!", Toast.LENGTH_SHORT).show()
+                            if (scannedContent != null) {
+                                handleScannedQrContent(scannedContent)
                             } else {
                                 Toast.makeText(this@MainActivity, "Could not find a valid QR code in selected image", Toast.LENGTH_SHORT).show()
                             }
@@ -750,18 +778,347 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showVaultTransferOptions() {
+        val options = arrayOf(
+            "📡 Send to Nearby Device (Local Wi-Fi P2P)\n    Direct device-to-device stream over Wi-Fi",
+            "📥 Receive from Nearby Device (Scan QR)\n    Scan sender's QR code to pull & sync vault",
+            "📤 Export Vault to File (.spvault)\n    Save encrypted backup file or share",
+            "📂 Import Vault from File (.spvault)\n    Restore or merge a .spvault backup file"
+        )
+
         MaterialAlertDialogBuilder(this)
-            .setTitle("Encrypted Vault Transfer")
-            .setMessage("Securely export your vault with a QR code & token to transfer to another device, or import a vault backup.")
-            .setPositiveButton("📤 Export Vault") { _, _ ->
-                promptBiometricForExport()
-            }
-            .setNeutralButton("📥 Import Vault") { _, _ ->
-                promptBiometricForImport()
+            .setTitle("Vault Transfer & Sync")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> startP2pSendFlow()
+                    1 -> checkCameraAndLaunchScanner()
+                    2 -> promptBiometricForExport()
+                    3 -> promptBiometricForImport()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    // ==========================================
+    // P2P LOCAL WI-FI SENDER FLOW
+    // ==========================================
+
+    private fun startP2pSendFlow() {
+        val ip = P2pNetworkHelper.getLocalWifiIpAddress()
+        if (ip == null) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Wi-Fi Connection Required")
+                .setMessage("Could not detect a local Wi-Fi IP address. Please ensure your device is connected to Wi-Fi so the receiving device can reach it.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        promptBiometricForP2pSend(ip)
+    }
+
+    private fun promptBiometricForP2pSend(localIp: String) {
+        val status = BiometricAuthHelper.checkBiometricAvailability(this)
+        if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
+            executeP2pSend(localIp)
+            return
+        }
+
+        try {
+            val encryptCipher = KeystoreHelper.initEncryptCipher()
+            BiometricAuthHelper.promptBiometricWithCrypto(
+                activity = this,
+                title = "Authorize Nearby Transfer",
+                subtitle = "Confirm fingerprint to send encrypted vault",
+                cipher = encryptCipher,
+                onSuccess = {
+                    executeP2pSend(localIp)
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
+            )
+        } catch (_: Exception) {
+            executeP2pSend(localIp)
+        }
+    }
+
+    private fun executeP2pSend(localIp: String) {
+        lifecycleScope.launch {
+            try {
+                val token = QrCodeHelper.generateSecureToken()
+                val vaultFile = VaultExportImportManager.exportVault(this@MainActivity, lockerRepository, token)
+
+                activeP2pServer?.stop()
+
+                val dialogBinding = DialogP2pSenderBinding.inflate(layoutInflater)
+                val dialog = MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("📡 Send Vault to Nearby Device")
+                    .setView(dialogBinding.root)
+                    .setNegativeButton("Cancel") { d, _ ->
+                        activeP2pServer?.stop()
+                        d.dismiss()
+                    }
+                    .setOnDismissListener {
+                        activeP2pServer?.stop()
+                    }
+                    .create()
+
+                val server = P2pTransferServer(
+                    vaultFile = vaultFile,
+                    expectedToken = token,
+                    timeoutSeconds = 90,
+                    onStatusUpdate = { status ->
+                        runOnUiThread {
+                            dialogBinding.tvP2pStatus.text = status
+                        }
+                    },
+                    onTransferComplete = {
+                        runOnUiThread {
+                            dialogBinding.tvP2pStatus.text = "✅ Transfer complete! Vault delivered."
+                            dialogBinding.progressBarP2p.visibility = View.GONE
+                            Toast.makeText(this@MainActivity, "Vault transferred successfully!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onError = { error ->
+                        runOnUiThread {
+                            dialogBinding.tvP2pStatus.text = "⚠️ $error"
+                        }
+                    }
+                )
+                activeP2pServer = server
+                server.start(lifecycleScope)
+
+                // Wait up to 1 second for socket port to bind
+                var attempts = 0
+                while (server.localPort <= 0 && attempts++ < 20) {
+                    delay(50)
+                }
+                val port = server.localPort
+                if (port <= 0) {
+                    dialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Failed to bind transfer port", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val p2pUri = "securepass://p2p?ip=$localIp&port=$port&token=$token"
+                val qrBitmap = QrCodeHelper.generateQrCodeBitmap(p2pUri, 512)
+
+                dialogBinding.ivP2pQr.setImageBitmap(qrBitmap)
+                dialogBinding.tvP2pAddress.text = "Wi-Fi: $localIp:$port"
+                dialogBinding.tvP2pToken.text = "Token: $token"
+
+                dialog.show()
+
+                // Countdown timer
+                launch {
+                    for (remaining in 90 downTo 0) {
+                        if (!dialog.isShowing) break
+                        dialogBinding.progressBarP2p.progress = remaining
+                        val curText = dialogBinding.tvP2pStatus.text.toString()
+                        if (curText.startsWith("Waiting") || curText.startsWith("Ready")) {
+                            dialogBinding.tvP2pStatus.text = "Waiting for receiver to connect... (${remaining}s)"
+                        }
+                        delay(1000)
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Failed to start transfer: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // ==========================================
+    // P2P LOCAL WI-FI RECEIVER & SCANNER FLOW
+    // ==========================================
+
+    private fun checkCameraAndLaunchScanner() {
+        val status = BiometricAuthHelper.checkBiometricAvailability(this)
+        if (status is BiometricAuthHelper.BiometricStatus.Ready) {
+            try {
+                val encryptCipher = KeystoreHelper.initEncryptCipher()
+                BiometricAuthHelper.promptBiometricWithCrypto(
+                    activity = this,
+                    title = "Authorize Vault Receive",
+                    subtitle = "Confirm fingerprint to receive vault",
+                    cipher = encryptCipher,
+                    onSuccess = {
+                        proceedWithCameraCheck()
+                    },
+                    onError = { _, msg ->
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    }
+                )
+                return
+            } catch (_: Exception) {}
+        }
+        proceedWithCameraCheck()
+    }
+
+    private fun proceedWithCameraCheck() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchQrScanner()
+        } else {
+            requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun launchQrScanner() {
+        val options = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("Scan SecurePass QR code on the sending device")
+            setCameraId(0)
+            setBeepEnabled(false)
+            setBarcodeImageEnabled(false)
+            setOrientationLocked(false)
+        }
+        barcodeLauncher.launch(options)
+    }
+
+    private fun handleScannedQrContent(scanned: String) {
+        val clean = scanned.trim()
+        if (clean.startsWith("securepass://p2p", ignoreCase = true)) {
+            val uri = Uri.parse(clean)
+            val ip = uri.getQueryParameter("ip")
+            val port = uri.getQueryParameter("port")?.toIntOrNull()
+            val token = uri.getQueryParameter("token")
+
+            if (ip.isNullOrBlank() || port == null || token.isNullOrBlank()) {
+                Toast.makeText(this, "Invalid P2P QR code format", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            startP2pReceiverFlow(ip, port, token)
+        } else {
+            // Standard manual token
+            if (activeTokenInput != null) {
+                activeTokenInput?.setText(clean)
+                Toast.makeText(this, "Token scanned successfully", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Scanned: $clean", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun startP2pReceiverFlow(ip: String, port: Int, token: String) {
+        val progressDialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Receiving Encrypted Vault")
+            .setMessage("Connecting to $ip:$port over local Wi-Fi...")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
+        lifecycleScope.launch {
+            try {
+                val destFile = File(cacheDir, "p2p_incoming_${System.currentTimeMillis()}.spvault")
+                P2pTransferClient.downloadVault(
+                    host = ip,
+                    port = port,
+                    token = token,
+                    destinationFile = destFile,
+                    onProgress = { downloaded, total ->
+                        runOnUiThread {
+                            val progressText = if (total > 0) {
+                                "Downloading encrypted vault: ${downloaded / 1024} KB / ${total / 1024} KB"
+                            } else {
+                                "Downloading encrypted vault: ${downloaded / 1024} KB"
+                            }
+                            progressDialog.setMessage(progressText)
+                        }
+                    }
+                )
+
+                progressDialog.dismiss()
+
+                // Analyze conflicts
+                val report = VaultExportImportManager.prepareVaultImportFromFile(lockerRepository, destFile, token)
+                showConflictResolutionOrCommit(report)
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("Transfer Failed")
+                    .setMessage(e.message ?: "Failed to receive vault from nearby device.")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+
+    // ==========================================
+    // SYNC CONFLICT RESOLUTION & IMPORT ENGINE
+    // ==========================================
+
+    private fun showConflictResolutionOrCommit(report: VaultConflictReport) {
+        if (report.totalIncoming == 0) {
+            Toast.makeText(this, "Incoming vault contains 0 documents.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!report.hasConflicts) {
+            // No conflicts! Direct import
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Import Vault")
+                .setMessage("Incoming vault contains:\n\n• ${report.newDocuments.size} New documents\n• ${report.identicalDocuments.size} Already up-to-date\n\nWould you like to import these documents?")
+                .setPositiveButton("Import") { _, _ ->
+                    commitVaultImport(report, ConflictResolutionStrategy.SMART_MERGE)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
+        // Conflicts exist! Show Conflict Resolution Dialog
+        val dialogBinding = DialogSyncConflictsBinding.inflate(layoutInflater)
+
+        val conflictDocTitles = report.conflictingDocuments.take(4).joinToString("\n") { "• ${it.incoming.title}" }
+        val moreText = if (report.conflictingDocuments.size > 4) "\n• ... and ${report.conflictingDocuments.size - 4} more" else ""
+
+        dialogBinding.tvConflictSummary.text =
+            "The incoming vault contains documents that already exist locally with different modification timestamps:\n\n" +
+            "• ${report.newDocuments.size} New documents\n" +
+            "• ${report.conflictingDocuments.size} Conflicting / modified documents\n" +
+            "• ${report.identicalDocuments.size} Identical documents\n\n" +
+            "Conflicting Documents:\n$conflictDocTitles$moreText"
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("⚠️ Sync Conflicts Detected")
+            .setView(dialogBinding.root)
+            .setPositiveButton("Apply") { _, _ ->
+                val strategy = when {
+                    dialogBinding.rbKeepBoth.isChecked -> ConflictResolutionStrategy.KEEP_BOTH
+                    dialogBinding.rbReplaceAll.isChecked -> ConflictResolutionStrategy.REPLACE_ALL
+                    else -> ConflictResolutionStrategy.SMART_MERGE
+                }
+                commitVaultImport(report, strategy)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun commitVaultImport(report: VaultConflictReport, strategy: ConflictResolutionStrategy) {
+        lifecycleScope.launch {
+            try {
+                val count = VaultExportImportManager.applyVaultImport(lockerRepository, report, strategy)
+                val strategyMsg = when (strategy) {
+                    ConflictResolutionStrategy.SMART_MERGE -> "Merged (kept newest)"
+                    ConflictResolutionStrategy.KEEP_BOTH -> "Imported with copies"
+                    ConflictResolutionStrategy.REPLACE_ALL -> "Replaced locker with backup"
+                }
+                Toast.makeText(this@MainActivity, "✅ Successfully processed $count documents ($strategyMsg)", Toast.LENGTH_LONG).show()
+                loadSecureLockerDocuments()
+            } catch (e: Exception) {
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("Import Error")
+                    .setMessage(e.message ?: "Failed to commit vault documents.")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+
+    // ==========================================
+    // MANUAL FILE EXPORT & IMPORT FLOWS
+    // ==========================================
 
     private fun promptBiometricForExport() {
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
@@ -801,12 +1158,12 @@ class MainActivity : AppCompatActivity() {
                     "$packageName.fileprovider",
                     exportFile
                 )
-                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/octet-stream"
-                    putExtra(android.content.Intent.EXTRA_STREAM, fileUri)
-                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(android.content.Intent.createChooser(shareIntent, "Share Encrypted Vault Backup (.spvault)"))
+                startActivity(Intent.createChooser(shareIntent, "Share Encrypted Vault Backup (.spvault)"))
 
                 showExportTokenAndQrDialog(token, qrBitmap)
             } catch (e: Exception) {
@@ -941,9 +1298,8 @@ class MainActivity : AppCompatActivity() {
     private fun executeVaultImport(fileUri: Uri, token: String) {
         lifecycleScope.launch {
             try {
-                val count = VaultExportImportManager.importVault(this@MainActivity, lockerRepository, fileUri, token)
-                Toast.makeText(this@MainActivity, "Successfully imported $count documents!", Toast.LENGTH_LONG).show()
-                loadSecureLockerDocuments()
+                val report = VaultExportImportManager.prepareVaultImport(this@MainActivity, lockerRepository, fileUri, token)
+                showConflictResolutionOrCommit(report)
             } catch (e: Exception) {
                 MaterialAlertDialogBuilder(this@MainActivity)
                     .setTitle("Import Failed")
@@ -952,5 +1308,11 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        activeP2pServer?.stop()
+        activeP2pServer = null
     }
 }

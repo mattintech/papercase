@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tvConflictSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:lineSpacingExtra="4dp"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="14sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginVertical="16dp"
+        android:background="?attr/colorSurfaceVariant" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Choose Conflict Resolution Strategy:"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <RadioGroup
+        android:id="@+id/rgConflictStrategy"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp">
+
+        <RadioButton
+            android:id="@+id/rbSmartMerge"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:paddingVertical="8dp"
+            android:text="Smart Merge (Recommended)\nKeeps the newest version based on timestamp and adds all new documents."
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="13sp" />
+
+        <RadioButton
+            android:id="@+id/rbKeepBoth"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="Keep Both\nPreserves local documents and imports conflicting incoming documents as copies."
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="13sp" />
+
+        <RadioButton
+            android:id="@+id/rbReplaceAll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="Replace All\nWipes existing locker and replaces everything with the incoming vault."
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="13sp" />
+
+    </RadioGroup>
+
+</LinearLayout>

@@ -49,14 +49,17 @@ class SecureLockerRepository(private val context: Context) {
         getAllDocuments().find { it.id == id }
     }
 
-    suspend fun saveDocument(doc: SecureDocument): Boolean = withContext(Dispatchers.IO) {
+    suspend fun saveDocument(doc: SecureDocument, preserveTimestamp: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
             val currentList = getAllDocuments().toMutableList()
+            val newUpdatedAt = if (preserveTimestamp) doc.updatedAt else System.currentTimeMillis()
+            val docToSave = doc.copy(updatedAt = newUpdatedAt)
+
             val index = currentList.indexOfFirst { it.id == doc.id }
             if (index >= 0) {
-                currentList[index] = doc.copy(updatedAt = System.currentTimeMillis())
+                currentList[index] = docToSave
             } else {
-                currentList.add(0, doc.copy(updatedAt = System.currentTimeMillis()))
+                currentList.add(0, docToSave)
             }
 
             val array = JSONArray()
@@ -68,6 +71,23 @@ class SecureLockerRepository(private val context: Context) {
                 put("iv", ivBase64)
             }
             catalogFile.writeText(wrapper.toString())
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun clearAll(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentList = getAllDocuments()
+            currentList.forEach { doc ->
+                doc.attachments.forEach { attachment ->
+                    val f = File(filesDir, attachment.encryptedFileName)
+                    if (f.exists()) f.delete()
+                }
+            }
+            if (catalogFile.exists()) catalogFile.delete()
             true
         } catch (e: Exception) {
             e.printStackTrace()

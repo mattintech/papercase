@@ -2,6 +2,7 @@ package com.mattintech.securepass.locker.transfer
 
 import android.content.Context
 import android.net.Uri
+import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.SecureDocument
 import com.mattintech.securepass.locker.repository.SecureLockerRepository
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import java.security.SecureRandom
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -27,6 +29,28 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+
+enum class ConflictResolutionStrategy {
+    SMART_MERGE,  // Keep newest for conflicts, add all new
+    KEEP_BOTH,    // Keep local, clone incoming as copy, add all new
+    REPLACE_ALL   // Clean replace entire locker
+}
+
+data class ConflictPair(
+    val incoming: SecureDocument,
+    val local: SecureDocument
+)
+
+data class VaultConflictReport(
+    val totalIncoming: Int,
+    val newDocuments: List<SecureDocument>,
+    val identicalDocuments: List<SecureDocument>,
+    val conflictingDocuments: List<ConflictPair>,
+    val fileMap: Map<String, ByteArray>
+) {
+    val hasConflicts: Boolean
+        get() = conflictingDocuments.isNotEmpty()
+}
 
 object VaultExportImportManager {
 
@@ -113,16 +137,37 @@ object VaultExportImportManager {
         exportFile
     }
 
-    suspend fun importVault(
+    /**
+     * Decrypts the vault package and analyzes differences against local repository to generate a conflict report.
+     */
+    suspend fun prepareVaultImport(
         context: Context,
         repository: SecureLockerRepository,
         fileUri: Uri,
         token: String
-    ): Int = withContext(Dispatchers.IO) {
+    ): VaultConflictReport = withContext(Dispatchers.IO) {
         val inputStream = context.contentResolver.openInputStream(fileUri)
             ?: throw IllegalArgumentException("Could not open file at $fileUri")
 
         val fileBytes = inputStream.use { it.readBytes() }
+        prepareVaultImportFromBytes(repository, fileBytes, token)
+    }
+
+    suspend fun prepareVaultImportFromFile(
+        repository: SecureLockerRepository,
+        file: File,
+        token: String
+    ): VaultConflictReport = withContext(Dispatchers.IO) {
+        if (!file.exists()) throw IllegalArgumentException("File does not exist: ${file.path}")
+        val fileBytes = file.readBytes()
+        prepareVaultImportFromBytes(repository, fileBytes, token)
+    }
+
+    private suspend fun prepareVaultImportFromBytes(
+        repository: SecureLockerRepository,
+        fileBytes: ByteArray,
+        token: String
+    ): VaultConflictReport = withContext(Dispatchers.IO) {
         if (fileBytes.size < 30) {
             throw IllegalArgumentException("Corrupted or invalid vault file")
         }
@@ -184,35 +229,140 @@ object VaultExportImportManager {
 
         val manifestJson = JSONObject(manifestContent!!)
         val docArray = manifestJson.getJSONArray("documents")
-        var importedCount = 0
+        val incomingDocuments = mutableListOf<SecureDocument>()
 
         for (i in 0 until docArray.length()) {
             val docObj = docArray.getJSONObject(i)
-            val doc = SecureDocument.fromJson(docObj)
+            incomingDocuments.add(SecureDocument.fromJson(docObj))
+        }
 
-            // Re-encrypt and persist each attachment onto the new device's local keystore
-            val updatedAttachments = mutableListOf<com.mattintech.securepass.locker.model.DocumentAttachment>()
-            for (att in doc.attachments) {
-                val rawBytes = fileMap[att.id]
-                if (rawBytes != null && rawBytes.isNotEmpty()) {
-                    val savedAtt = repository.saveAttachmentBytes(
-                        fileName = att.fileName,
-                        mimeType = att.mimeType,
-                        data = rawBytes,
-                        slot = att.slot,
-                        customTitle = att.customTitle
-                    )
-                    updatedAttachments.add(savedAtt)
-                } else {
-                    updatedAttachments.add(att)
+        val localDocuments = repository.getAllDocuments()
+        val localMap = localDocuments.associateBy { it.id }
+
+        val newDocs = mutableListOf<SecureDocument>()
+        val identicalDocs = mutableListOf<SecureDocument>()
+        val conflictingDocs = mutableListOf<ConflictPair>()
+
+        for (incoming in incomingDocuments) {
+            val local = localMap[incoming.id]
+            if (local == null) {
+                newDocs.add(incoming)
+            } else if (local.updatedAt == incoming.updatedAt && local.title == incoming.title && local.documentNumber == incoming.documentNumber) {
+                identicalDocs.add(incoming)
+            } else {
+                conflictingDocs.add(ConflictPair(incoming = incoming, local = local))
+            }
+        }
+
+        VaultConflictReport(
+            totalIncoming = incomingDocuments.size,
+            newDocuments = newDocs,
+            identicalDocuments = identicalDocs,
+            conflictingDocuments = conflictingDocs,
+            fileMap = fileMap
+        )
+    }
+
+    /**
+     * Commits the import according to the chosen conflict resolution strategy.
+     */
+    suspend fun applyVaultImport(
+        repository: SecureLockerRepository,
+        report: VaultConflictReport,
+        strategy: ConflictResolutionStrategy
+    ): Int = withContext(Dispatchers.IO) {
+        var processedCount = 0
+
+        when (strategy) {
+            ConflictResolutionStrategy.REPLACE_ALL -> {
+                repository.clearAll()
+
+                val allIncoming = report.newDocuments + report.identicalDocuments + report.conflictingDocuments.map { it.incoming }
+                for (doc in allIncoming) {
+                    val savedDoc = saveDocWithAttachments(repository, doc, report.fileMap)
+                    repository.saveDocument(savedDoc, preserveTimestamp = true)
+                    processedCount++
                 }
             }
 
-            val docToSave = doc.copy(attachments = updatedAttachments)
-            repository.saveDocument(docToSave)
-            importedCount++
+            ConflictResolutionStrategy.SMART_MERGE -> {
+                // 1. Add all new documents
+                for (doc in report.newDocuments) {
+                    val savedDoc = saveDocWithAttachments(repository, doc, report.fileMap)
+                    repository.saveDocument(savedDoc, preserveTimestamp = true)
+                    processedCount++
+                }
+
+                // 2. Handle conflicts: keep the newer version
+                for (conflict in report.conflictingDocuments) {
+                    if (conflict.incoming.updatedAt > conflict.local.updatedAt) {
+                        // Incoming is newer -> overwrite local
+                        val savedDoc = saveDocWithAttachments(repository, conflict.incoming, report.fileMap)
+                        repository.saveDocument(savedDoc, preserveTimestamp = true)
+                        processedCount++
+                    } else {
+                        // Local is newer or equal -> keep local as-is
+                        // No changes needed
+                    }
+                }
+            }
+
+            ConflictResolutionStrategy.KEEP_BOTH -> {
+                // 1. Add all new documents
+                for (doc in report.newDocuments) {
+                    val savedDoc = saveDocWithAttachments(repository, doc, report.fileMap)
+                    repository.saveDocument(savedDoc, preserveTimestamp = true)
+                    processedCount++
+                }
+
+                // 2. Handle conflicts: preserve local, add incoming as a separate copy
+                for (conflict in report.conflictingDocuments) {
+                    val cloneDoc = conflict.incoming.copy(
+                        id = UUID.randomUUID().toString(),
+                        title = "${conflict.incoming.title} (Synced Copy)"
+                    )
+                    val savedDoc = saveDocWithAttachments(repository, cloneDoc, report.fileMap)
+                    repository.saveDocument(savedDoc, preserveTimestamp = true)
+                    processedCount++
+                }
+            }
         }
 
-        importedCount
+        processedCount
+    }
+
+    private suspend fun saveDocWithAttachments(
+        repository: SecureLockerRepository,
+        doc: SecureDocument,
+        fileMap: Map<String, ByteArray>
+    ): SecureDocument {
+        val updatedAttachments = mutableListOf<DocumentAttachment>()
+        for (att in doc.attachments) {
+            val rawBytes = fileMap[att.id]
+            if (rawBytes != null && rawBytes.isNotEmpty()) {
+                val savedAtt = repository.saveAttachmentBytes(
+                    fileName = att.fileName,
+                    mimeType = att.mimeType,
+                    data = rawBytes,
+                    slot = att.slot,
+                    customTitle = att.customTitle
+                )
+                updatedAttachments.add(savedAtt)
+            } else {
+                updatedAttachments.add(att)
+            }
+        }
+        return doc.copy(attachments = updatedAttachments)
+    }
+
+    // Default legacy method for backward compatibility
+    suspend fun importVault(
+        context: Context,
+        repository: SecureLockerRepository,
+        fileUri: Uri,
+        token: String
+    ): Int = withContext(Dispatchers.IO) {
+        val report = prepareVaultImport(context, repository, fileUri, token)
+        applyVaultImport(repository, report, ConflictResolutionStrategy.SMART_MERGE)
     }
 }
