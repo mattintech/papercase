@@ -2,6 +2,7 @@ package com.mattintech.securepass.locker.transfer
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Base64
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
@@ -21,6 +22,23 @@ object QrCodeHelper {
             (1..4).map { TOKEN_CHARS[random.nextInt(TOKEN_CHARS.length)] }.joinToString("")
         }
         return "SPVT-" + segments.joinToString("-")
+    }
+
+    /** Random 256-bit key for a single P2P transfer. Only ever travels inside the QR code. */
+    fun generateTransferKey(): ByteArray {
+        val key = ByteArray(32)
+        SecureRandom().nextBytes(key)
+        return key
+    }
+
+    fun encodeTransferKey(key: ByteArray): String =
+        Base64.encodeToString(key, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+
+    fun decodeTransferKey(encoded: String): ByteArray? = try {
+        Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+            .takeIf { it.size == 32 }
+    } catch (_: IllegalArgumentException) {
+        null
     }
 
     fun generateBitMatrix(content: String, size: Int = 512): BitMatrix {

@@ -1,11 +1,13 @@
 package com.mattintech.securepass.locker.repository
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.net.Uri
-import android.util.Base64
 import androidx.core.content.FileProvider
 import com.mattintech.securepass.locker.crypto.DocumentPasswordCrypto
+import com.mattintech.securepass.locker.crypto.LockerKeyInvalidatedException
 import com.mattintech.securepass.locker.crypto.LockerKeystoreHelper
+import com.mattintech.securepass.locker.crypto.LockerLockedException
 import com.mattintech.securepass.locker.model.AttachmentSlot
 import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.SecureDocument
@@ -23,22 +25,84 @@ class SecureLockerRepository(private val context: Context) {
     private val filesDir = File(lockerDir, "files").apply { if (!exists()) mkdirs() }
     private val catalogFile = File(lockerDir, "catalog.enc")
 
-    suspend fun getAllDocuments(): List<SecureDocument> = withContext(Dispatchers.IO) {
-        if (!catalogFile.exists()) return@withContext emptyList()
-        try {
-            val fileContent = catalogFile.readText()
-            val jsonWrapper = JSONObject(fileContent)
-            val cipherBase64 = jsonWrapper.getString("ciphertext")
-            val ivBase64 = jsonWrapper.getString("iv")
+    private fun isDeviceSecure(): Boolean =
+        (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure
 
-            val jsonString = LockerKeystoreHelper.decryptString(cipherBase64, ivBase64)
-            val array = JSONArray(jsonString)
-            val list = mutableListOf<SecureDocument>()
-            for (i in 0 until array.length()) {
-                val itemObj = array.getJSONObject(i)
-                list.add(SecureDocument.fromJson(itemObj))
-            }
-            list.sortedByDescending { it.updatedAt }
+    /** Key version recorded in the catalog; catalogs written before versioning used the legacy key. */
+    private fun catalogKeyVersion(): Int? {
+        if (!catalogFile.exists()) return null
+        return JSONObject(catalogFile.readText())
+            .optInt("keyVersion", LockerKeystoreHelper.KEY_VERSION_LEGACY)
+    }
+
+    /** Key used for locker-encrypted attachments and the catalog. New lockers use the auth-bound key when possible. */
+    private fun activeKeyVersion(): Int {
+        catalogKeyVersion()?.let { return it }
+        return if (isDeviceSecure()) LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND else LockerKeystoreHelper.KEY_VERSION_LEGACY
+    }
+
+    private fun ensureKey(version: Int) {
+        if (!LockerKeystoreHelper.hasKey(version) && catalogKeyVersion() == null) {
+            LockerKeystoreHelper.generateKey(version)
+        }
+    }
+
+    /** True when the locker still uses the key that works without authentication. */
+    fun needsAuthBoundMigration(): Boolean =
+        isDeviceSecure() && catalogKeyVersion() == LockerKeystoreHelper.KEY_VERSION_LEGACY
+
+    /**
+     * Reads the catalog. Throws on any failure so callers never mistake an unreadable locker for an
+     * empty one (writing an "empty" list back would destroy every document).
+     */
+    private fun loadCatalogStrict(): MutableList<SecureDocument> {
+        if (!catalogFile.exists()) return mutableListOf()
+        val jsonWrapper = JSONObject(catalogFile.readText())
+        val version = jsonWrapper.optInt("keyVersion", LockerKeystoreHelper.KEY_VERSION_LEGACY)
+        val jsonString = LockerKeystoreHelper.decryptString(
+            jsonWrapper.getString("ciphertext"),
+            jsonWrapper.getString("iv"),
+            version
+        )
+        val array = JSONArray(jsonString)
+        val list = mutableListOf<SecureDocument>()
+        for (i in 0 until array.length()) {
+            list.add(SecureDocument.fromJson(array.getJSONObject(i)))
+        }
+        return list
+    }
+
+    /** Atomically replaces the catalog, encrypted with [version]. */
+    private fun writeCatalog(list: List<SecureDocument>, version: Int) {
+        ensureKey(version)
+        val array = JSONArray()
+        list.forEach { array.put(it.toJson()) }
+
+        val (cipherBase64, ivBase64) = LockerKeystoreHelper.encryptString(array.toString(), version)
+        val wrapper = JSONObject().apply {
+            put("ciphertext", cipherBase64)
+            put("iv", ivBase64)
+            put("keyVersion", version)
+        }
+        val tempFile = File(lockerDir, "catalog.enc.tmp")
+        tempFile.writeText(wrapper.toString())
+        if (!tempFile.renameTo(catalogFile)) {
+            tempFile.delete()
+            throw IllegalStateException("Could not write locker catalog")
+        }
+    }
+
+    /**
+     * @throws LockerLockedException if the user must authenticate again
+     * @throws LockerKeyInvalidatedException if Android destroyed the locker key
+     */
+    suspend fun getAllDocuments(): List<SecureDocument> = withContext(Dispatchers.IO) {
+        try {
+            loadCatalogStrict().sortedByDescending { it.updatedAt }
+        } catch (e: LockerLockedException) {
+            throw e
+        } catch (e: LockerKeyInvalidatedException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
@@ -51,7 +115,7 @@ class SecureLockerRepository(private val context: Context) {
 
     suspend fun saveDocument(doc: SecureDocument, preserveTimestamp: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
-            val currentList = getAllDocuments().toMutableList()
+            val currentList = loadCatalogStrict()
             val newUpdatedAt = if (preserveTimestamp) doc.updatedAt else System.currentTimeMillis()
             val docToSave = doc.copy(updatedAt = newUpdatedAt)
 
@@ -62,16 +126,12 @@ class SecureLockerRepository(private val context: Context) {
                 currentList.add(0, docToSave)
             }
 
-            val array = JSONArray()
-            currentList.forEach { array.put(it.toJson()) }
-
-            val (cipherBase64, ivBase64) = LockerKeystoreHelper.encryptString(array.toString())
-            val wrapper = JSONObject().apply {
-                put("ciphertext", cipherBase64)
-                put("iv", ivBase64)
-            }
-            catalogFile.writeText(wrapper.toString())
+            writeCatalog(currentList, activeKeyVersion())
             true
+        } catch (e: LockerLockedException) {
+            throw e
+        } catch (e: LockerKeyInvalidatedException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -80,48 +140,52 @@ class SecureLockerRepository(private val context: Context) {
 
     suspend fun clearAll(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val currentList = getAllDocuments()
-            currentList.forEach { doc ->
-                doc.attachments.forEach { attachment ->
-                    val f = File(filesDir, attachment.encryptedFileName)
-                    if (f.exists()) f.delete()
-                }
-            }
+            val currentList = loadCatalogStrict()
+            currentList.forEach { doc -> doc.attachments.forEach { deleteAttachmentFile(it) } }
             if (catalogFile.exists()) catalogFile.delete()
             true
+        } catch (e: LockerLockedException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
     }
 
+    /**
+     * Used after Android destroyed the auth-bound key: the documents can't be decrypted any more,
+     * so wipe the unreadable files and start a fresh locker.
+     */
+    suspend fun resetAfterKeyLoss() = withContext(Dispatchers.IO) {
+        filesDir.listFiles()?.forEach { it.delete() }
+        catalogFile.delete()
+        LockerKeystoreHelper.deleteKey(LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND)
+        LockerKeystoreHelper.deleteKey(LockerKeystoreHelper.KEY_VERSION_LEGACY)
+    }
+
     suspend fun deleteDocument(docId: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val currentList = getAllDocuments().toMutableList()
+            val currentList = loadCatalogStrict()
             val doc = currentList.find { it.id == docId } ?: return@withContext false
 
-            // Delete associated encrypted files
-            doc.attachments.forEach { attachment ->
-                val f = File(filesDir, attachment.encryptedFileName)
-                if (f.exists()) f.delete()
-            }
-
+            doc.attachments.forEach { deleteAttachmentFile(it) }
             currentList.removeAll { it.id == docId }
 
-            val array = JSONArray()
-            currentList.forEach { array.put(it.toJson()) }
-
-            val (cipherBase64, ivBase64) = LockerKeystoreHelper.encryptString(array.toString())
-            val wrapper = JSONObject().apply {
-                put("ciphertext", cipherBase64)
-                put("iv", ivBase64)
-            }
-            catalogFile.writeText(wrapper.toString())
+            writeCatalog(currentList, activeKeyVersion())
             true
+        } catch (e: LockerLockedException) {
+            throw e
+        } catch (e: LockerKeyInvalidatedException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
+    }
+
+    fun deleteAttachmentFile(attachment: DocumentAttachment) {
+        val f = File(filesDir, attachment.encryptedFileName)
+        if (f.exists()) f.delete()
     }
 
     suspend fun saveAttachmentBytes(
@@ -135,7 +199,9 @@ class SecureLockerRepository(private val context: Context) {
         val (cipherBytes, ivBytes) = if (customDek != null) {
             DocumentPasswordCrypto.encryptWithDek(data, customDek)
         } else {
-            LockerKeystoreHelper.encryptBytes(data)
+            val version = activeKeyVersion()
+            ensureKey(version)
+            LockerKeystoreHelper.encryptBytes(data, version)
         }
         val encryptedFileName = "${UUID.randomUUID()}.bin"
         val encFile = File(filesDir, encryptedFileName)
@@ -166,8 +232,78 @@ class SecureLockerRepository(private val context: Context) {
         if (customDek != null) {
             DocumentPasswordCrypto.decryptWithDek(cipherBytes, ivBytes, customDek)
         } else {
-            LockerKeystoreHelper.decryptBytes(cipherBytes, ivBytes)
+            LockerKeystoreHelper.decryptBytes(cipherBytes, ivBytes, activeKeyVersion())
         }
+    }
+
+    /**
+     * Raw ciphertext of a password-protected attachment. It's encrypted with the document's own key,
+     * so it can be transferred as-is and only opened with the document password.
+     */
+    suspend fun readStoredAttachmentBytes(attachment: DocumentAttachment): ByteArray = withContext(Dispatchers.IO) {
+        val encFile = File(filesDir, attachment.encryptedFileName)
+        if (encFile.exists()) encFile.readBytes() else ByteArray(0)
+    }
+
+    /** Stores ciphertext received from another device without re-encrypting it. */
+    suspend fun saveStoredAttachmentBytes(
+        attachment: DocumentAttachment,
+        cipherBytes: ByteArray
+    ): DocumentAttachment = withContext(Dispatchers.IO) {
+        val encryptedFileName = "${UUID.randomUUID()}.bin"
+        File(filesDir, encryptedFileName).writeBytes(cipherBytes)
+        attachment.copy(encryptedFileName = encryptedFileName)
+    }
+
+    /**
+     * One-time move from the legacy key to the auth-bound key. Must be called right after the user
+     * authenticated. The old catalog and files stay valid until the new catalog is written, so an
+     * interrupted migration simply runs again next time.
+     */
+    suspend fun migrateToAuthBoundKey(): Boolean = withContext(Dispatchers.IO) {
+        if (!needsAuthBoundMigration()) return@withContext false
+        val legacy = LockerKeystoreHelper.KEY_VERSION_LEGACY
+        val authBound = LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND
+
+        val documents = loadCatalogStrict()
+        // Safe to (re)create: nothing uses the auth-bound key until the catalog below is written
+        LockerKeystoreHelper.generateKey(authBound)
+
+        val newFiles = mutableListOf<File>()
+        try {
+            val migrated = documents.map { doc ->
+                // Password-protected attachments use the document's own key and don't change
+                if (doc.isPasswordProtected) return@map doc
+                doc.copy(attachments = doc.attachments.map { att ->
+                    val encFile = File(filesDir, att.encryptedFileName)
+                    if (!encFile.exists()) return@map att
+                    val plain = LockerKeystoreHelper.decryptBytes(
+                        encFile.readBytes(),
+                        java.util.Base64.getDecoder().decode(att.ivBase64),
+                        legacy
+                    )
+                    val (cipherBytes, ivBytes) = LockerKeystoreHelper.encryptBytes(plain, authBound)
+                    val newFile = File(filesDir, "${UUID.randomUUID()}.bin")
+                    newFile.writeBytes(cipherBytes)
+                    newFiles.add(newFile)
+                    att.copy(
+                        encryptedFileName = newFile.name,
+                        ivBase64 = java.util.Base64.getEncoder().encodeToString(ivBytes)
+                    )
+                })
+            }
+            writeCatalog(migrated, authBound)
+        } catch (e: Exception) {
+            newFiles.forEach { it.delete() }
+            throw e
+        }
+
+        // New catalog is in place: remove the legacy copies and key
+        documents.filter { !it.isPasswordProtected }
+            .flatMap { it.attachments }
+            .forEach { deleteAttachmentFile(it) }
+        LockerKeystoreHelper.deleteKey(legacy)
+        true
     }
 
     suspend fun exportAttachmentForShare(

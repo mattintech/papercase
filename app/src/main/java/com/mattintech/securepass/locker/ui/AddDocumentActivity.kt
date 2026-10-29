@@ -291,7 +291,14 @@ class AddDocumentActivity : AppCompatActivity() {
 
     private fun loadExistingDocument(docId: String) {
         lifecycleScope.launch {
-            val doc = repository.getDocumentById(docId) ?: return@launch
+            val doc = try {
+                repository.getDocumentById(docId)
+            } catch (e: Exception) {
+                // Locker key needs a fresh unlock (or was lost): go back to the locker screen
+                Toast.makeText(this@AddDocumentActivity, "Secure Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            } ?: return@launch
             existingDocument = doc
 
             if (doc.isPasswordProtected) {
@@ -624,7 +631,7 @@ class AddDocumentActivity : AppCompatActivity() {
                     item.fileName.endsWith(".png", ignoreCase = true)
                 ) {
                     try {
-                        val bitmap = BitmapFactory.decodeByteArray(item.bytes, 0, item.bytes.size)
+                        val bitmap = OrientedBitmap.decode(item.bytes)
                         if (bitmap != null) {
                             imageView.setImageBitmap(bitmap)
                         } else {
@@ -643,7 +650,7 @@ class AddDocumentActivity : AppCompatActivity() {
                     try {
                         val bytes = repository.readAttachmentBytes(item.docAttachment, unlockedDek)
                         if (bytes.isNotEmpty()) {
-                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            val bitmap = OrientedBitmap.decode(bytes)
                             withContext(Dispatchers.Main) {
                                 if (bitmap != null) {
                                     imageView.setImageBitmap(bitmap)
@@ -749,6 +756,10 @@ class AddDocumentActivity : AppCompatActivity() {
                 }
 
                 val finalAttachments = mutableListOf<DocumentAttachment>()
+                val replacedAttachments = mutableListOf<DocumentAttachment>()
+
+                // Key the existing attachments are encrypted with (null = locker key)
+                val previousDek = if (existingDocument?.isPasswordProtected == true) unlockedDek else null
 
                 val allItems = mutableListOf<AttachmentItem>()
                 frontAttachment?.let { allItems.add(it) }
@@ -759,12 +770,29 @@ class AddDocumentActivity : AppCompatActivity() {
                 allItems.forEach { item ->
                     when (item) {
                         is AttachmentItem.Existing -> {
-                            finalAttachments.add(
-                                item.docAttachment.copy(
-                                    slot = item.slot,
-                                    customTitle = item.customTitle
+                            if (activeDek === previousDek) {
+                                finalAttachments.add(
+                                    item.docAttachment.copy(
+                                        slot = item.slot,
+                                        customTitle = item.customTitle
+                                    )
                                 )
-                            )
+                            } else {
+                                // Password added, changed, or removed: re-encrypt so every attachment
+                                // uses the document's current key
+                                val plain = repository.readAttachmentBytes(item.docAttachment, previousDek)
+                                finalAttachments.add(
+                                    repository.saveAttachmentBytes(
+                                        fileName = item.docAttachment.fileName,
+                                        mimeType = item.docAttachment.mimeType,
+                                        data = plain,
+                                        slot = item.slot,
+                                        customTitle = item.customTitle,
+                                        customDek = activeDek
+                                    )
+                                )
+                                replacedAttachments.add(item.docAttachment)
+                            }
                         }
                         is AttachmentItem.Pending -> {
                             val saved = repository.saveAttachmentBytes(
@@ -809,6 +837,7 @@ class AddDocumentActivity : AppCompatActivity() {
 
                 val success = repository.saveDocument(docToSave)
                 if (success) {
+                    replacedAttachments.forEach { repository.deleteAttachmentFile(it) }
                     IssuingAuthorityHelper.recordNewAuthority(this@AddDocumentActivity, country)
                     Toast.makeText(this@AddDocumentActivity, "Document & photos securely saved!", Toast.LENGTH_SHORT).show()
                     setResult(Activity.RESULT_OK)

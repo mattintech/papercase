@@ -55,7 +55,8 @@ data class VaultConflictReport(
 object VaultExportImportManager {
 
     private const val MAGIC_HEADER = 0x53505654 // "SPVT"
-    private const val FORMAT_VERSION = 1
+    private const val FORMAT_VERSION = 1           // token-protected file backup (PBKDF2)
+    private const val FORMAT_VERSION_RAW_KEY = 2   // P2P transfer, random 256-bit key from the QR
     private const val PBKDF2_ITERATIONS = 20000
     private const val KEY_LENGTH_BITS = 256
     private const val GCM_TAG_LENGTH = 128
@@ -74,9 +75,42 @@ object VaultExportImportManager {
         repository: SecureLockerRepository,
         token: String
     ): File = withContext(Dispatchers.IO) {
+        val unencryptedZipBytes = buildArchive(repository)
+
+        // Generate Salt & Derive Transfer Key
+        val salt = ByteArray(SALT_LENGTH)
+        SecureRandom().nextBytes(salt)
+        val transferKey = deriveKey(token, salt)
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, transferKey)
+        val cipherBytes = cipher.doFinal(unencryptedZipBytes)
+
+        // Container: [MAGIC(4)][VERSION(1)][SALT(16)][IV_LEN(1)][IV(12)][PAYLOAD_LEN(4)][PAYLOAD]
+        writeContainer(context, FORMAT_VERSION, salt, cipher.iv, cipherBytes)
+    }
+
+    /**
+     * Exports the vault for a P2P transfer, encrypted with a key derived from the QR transfer key.
+     */
+    suspend fun exportVaultWithKey(
+        context: Context,
+        repository: SecureLockerRepository,
+        encryptionKey: ByteArray
+    ): File = withContext(Dispatchers.IO) {
+        val unencryptedZipBytes = buildArchive(repository)
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(encryptionKey, "AES"))
+        val cipherBytes = cipher.doFinal(unencryptedZipBytes)
+
+        // Container: [MAGIC(4)][VERSION(1)][IV_LEN(1)][IV(12)][PAYLOAD_LEN(4)][PAYLOAD]
+        writeContainer(context, FORMAT_VERSION_RAW_KEY, null, cipher.iv, cipherBytes)
+    }
+
+    private suspend fun buildArchive(repository: SecureLockerRepository): ByteArray {
         val documents = repository.getAllDocuments()
 
-        // 1. Build unencrypted ZIP archive in memory
         val zipByteStream = ByteArrayOutputStream()
         ZipOutputStream(zipByteStream).use { zipOut ->
             // Write manifest.json
@@ -93,10 +127,15 @@ object VaultExportImportManager {
             zipOut.write(manifestJson.toString().toByteArray(StandardCharsets.UTF_8))
             zipOut.closeEntry()
 
-            // Write all attachment files into zip
+            // Write all attachment files into zip. Password-protected documents stay encrypted with
+            // their own key (salt + wrapped key travel in the manifest), so only the password opens them.
             for (doc in documents) {
                 for (att in doc.attachments) {
-                    val rawBytes = repository.readAttachmentBytes(att)
+                    val rawBytes = if (doc.isPasswordProtected) {
+                        repository.readStoredAttachmentBytes(att)
+                    } else {
+                        repository.readAttachmentBytes(att)
+                    }
                     if (rawBytes.isNotEmpty()) {
                         zipOut.putNextEntry(ZipEntry("files/${att.id}"))
                         zipOut.write(rawBytes)
@@ -105,36 +144,30 @@ object VaultExportImportManager {
                 }
             }
         }
+        return zipByteStream.toByteArray()
+    }
 
-        val unencryptedZipBytes = zipByteStream.toByteArray()
-
-        // 2. Generate Salt & Derive Transfer Key
-        val salt = ByteArray(SALT_LENGTH)
-        SecureRandom().nextBytes(salt)
-        val transferKey = deriveKey(token, salt)
-
-        // 3. Encrypt ZIP with AES-256-GCM
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, transferKey)
-        val cipherBytes = cipher.doFinal(unencryptedZipBytes)
-        val iv = cipher.iv
-
-        // 4. Assemble container file: [MAGIC(4)][VERSION(1)][SALT(16)][IV_LEN(1)][IV(12)][PAYLOAD_LEN(4)][PAYLOAD]
+    private fun writeContainer(
+        context: Context,
+        version: Int,
+        salt: ByteArray?,
+        iv: ByteArray,
+        cipherBytes: ByteArray
+    ): File {
         val exportDir = File(context.cacheDir, "vault_exports").apply { if (!exists()) mkdirs() }
         val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val exportFile = File(exportDir, "SecurePass_Vault_$dateStr.spvault")
 
         DataOutputStream(FileOutputStream(exportFile)).use { out ->
             out.writeInt(MAGIC_HEADER)
-            out.writeByte(FORMAT_VERSION)
-            out.write(salt)
+            out.writeByte(version)
+            if (salt != null) out.write(salt)
             out.writeByte(iv.size)
             out.write(iv)
             out.writeInt(cipherBytes.size)
             out.write(cipherBytes)
         }
-
-        exportFile
+        return exportFile
     }
 
     /**
@@ -163,6 +196,34 @@ object VaultExportImportManager {
         prepareVaultImportFromBytes(repository, fileBytes, token)
     }
 
+    suspend fun prepareVaultImportFromFileWithKey(
+        repository: SecureLockerRepository,
+        file: File,
+        encryptionKey: ByteArray
+    ): VaultConflictReport = withContext(Dispatchers.IO) {
+        if (!file.exists()) throw IllegalArgumentException("File does not exist: ${file.path}")
+        val dataIn = DataInputStream(ByteArrayInputStream(file.readBytes()))
+        if (dataIn.readInt() != MAGIC_HEADER) {
+            throw IllegalArgumentException("Not a valid SecurePass vault transfer")
+        }
+        if (dataIn.readByte().toInt() != FORMAT_VERSION_RAW_KEY) {
+            throw IllegalArgumentException("Unsupported transfer format. Update SecurePass on both devices.")
+        }
+        val iv = ByteArray(dataIn.readByte().toInt())
+        dataIn.readFully(iv)
+        val cipherBytes = ByteArray(dataIn.readInt())
+        dataIn.readFully(cipherBytes)
+
+        val decryptedZipBytes = try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(encryptionKey, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            cipher.doFinal(cipherBytes)
+        } catch (_: Exception) {
+            throw IllegalArgumentException("Decryption failed. The transfer was corrupted or tampered with.")
+        }
+        analyzeArchive(repository, decryptedZipBytes)
+    }
+
     private suspend fun prepareVaultImportFromBytes(
         repository: SecureLockerRepository,
         fileBytes: ByteArray,
@@ -179,7 +240,7 @@ object VaultExportImportManager {
         }
 
         val version = dataIn.readByte().toInt()
-        if (version > FORMAT_VERSION) {
+        if (version != FORMAT_VERSION) {
             throw IllegalArgumentException("Vault format version $version is not supported by this version of SecurePass")
         }
 
@@ -204,7 +265,13 @@ object VaultExportImportManager {
         } catch (_: Exception) {
             throw IllegalArgumentException("Decryption failed. The Secure Token entered is incorrect or the file is corrupted.")
         }
+        analyzeArchive(repository, decryptedZipBytes)
+    }
 
+    private suspend fun analyzeArchive(
+        repository: SecureLockerRepository,
+        decryptedZipBytes: ByteArray
+    ): VaultConflictReport {
         // Unzip and restore documents & attachments
         val fileMap = mutableMapOf<String, ByteArray>()
         var manifestContent: String? = null
@@ -254,7 +321,7 @@ object VaultExportImportManager {
             }
         }
 
-        VaultConflictReport(
+        return VaultConflictReport(
             totalIncoming = incomingDocuments.size,
             newDocuments = newDocs,
             identicalDocuments = identicalDocs,
@@ -339,7 +406,10 @@ object VaultExportImportManager {
         val updatedAttachments = mutableListOf<DocumentAttachment>()
         for (att in doc.attachments) {
             val rawBytes = fileMap[att.id]
-            if (rawBytes != null && rawBytes.isNotEmpty()) {
+            if (rawBytes != null && rawBytes.isNotEmpty() && doc.isPasswordProtected) {
+                // Still encrypted with the document's own key: store as-is
+                updatedAttachments.add(repository.saveStoredAttachmentBytes(att, rawBytes))
+            } else if (rawBytes != null && rawBytes.isNotEmpty()) {
                 val savedAtt = repository.saveAttachmentBytes(
                     fileName = att.fileName,
                     mimeType = att.mimeType,

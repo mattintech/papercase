@@ -97,4 +97,18 @@ class SessionManagerTest {
         SessionManager.checkAndLockDueToInactivity()
         assertFalse("Locker should be locked by inactivity check", SessionManager.isLockerUnlocked)
     }
+
+    @Test
+    fun testKeepAliveCannotOutliveMaxAuthAge() {
+        SessionManager.markAuthenticated()
+        // Stay active every 4 minutes; the session must still end at the hard cap since the last unlock
+        repeat(2) {
+            fakeCurrentTime += 4 * 60 * 1000L
+            SessionManager.keepAlive()
+            assertTrue(SessionManager.isSessionValid())
+        }
+        fakeCurrentTime += 2 * 60 * 1000L
+        SessionManager.keepAlive()
+        assertFalse(SessionManager.isSessionValid())
+    }
 }

@@ -42,17 +42,21 @@ class P2pTransferTest {
             writeBytes(payloadData)
         }
         val destFile = File(tempDir, "received_vault.spvault")
-        val token = "SPVT-TEST-ABCD-1234-EFGH-5678"
+        val sessionKeys = P2pSessionKeys(ByteArray(32) { it.toByte() })
 
         val latch = CountDownLatch(1)
         var serverStatus = ""
         var serverCompleted = false
         var serverError: String? = null
 
+        var approvedName: String? = null
         val server = P2pTransferServer(
-            vaultFile = sourceFile,
-            expectedToken = token,
+            expectedSessionId = sessionKeys.sessionId,
             timeoutSeconds = 10,
+            onReceiverConnected = { name, _ ->
+                approvedName = name
+                sourceFile
+            },
             onStatusUpdate = { serverStatus = it },
             onTransferComplete = {
                 serverCompleted = true
@@ -75,7 +79,8 @@ class P2pTransferTest {
         val downloaded = P2pTransferClient.downloadVault(
             host = "127.0.0.1",
             port = port,
-            token = token,
+            sessionId = sessionKeys.sessionId,
+            deviceName = "Samsung SM-X230\r\nInjected: header",
             destinationFile = destFile
         )
 
@@ -84,21 +89,22 @@ class P2pTransferTest {
         assertTrue(destFile.exists())
         assertEquals(payloadData.size.toLong(), destFile.length())
         assertArrayEquals(payloadData, destFile.readBytes())
+        assertEquals("Samsung SM-X230  Injected header", approvedName)
 
         server.stop()
     }
 
     @Test
-    fun testUnauthorizedTokenTransferRejected() = runBlocking {
+    fun testWrongSessionIdTransferRejected() = runBlocking {
         val payloadData = "Secret Vault Bytes".toByteArray()
         val sourceFile = File(tempDir, "secret.spvault").apply { writeBytes(payloadData) }
         val destFile = File(tempDir, "rejected.spvault")
-        val validToken = "SPVT-VALID-TOKEN-1111"
-        val invalidToken = "SPVT-WRONG-TOKEN-9999"
+        val validKeys = P2pSessionKeys(ByteArray(32) { 1 })
+        val wrongKeys = P2pSessionKeys(ByteArray(32) { 2 })
 
         val server = P2pTransferServer(
-            vaultFile = sourceFile,
-            expectedToken = validToken,
+            expectedSessionId = validKeys.sessionId,
+            onReceiverConnected = { _, _ -> fail("Wrong session id must not reach approval"); null },
             timeoutSeconds = 10,
             onStatusUpdate = {},
             onTransferComplete = {},
@@ -116,14 +122,63 @@ class P2pTransferTest {
             P2pTransferClient.downloadVault(
                 host = "127.0.0.1",
                 port = port,
-                token = invalidToken,
+                sessionId = wrongKeys.sessionId,
+                deviceName = "Test",
                 destinationFile = destFile
             )
-            fail("Expected exception when using invalid token")
+            fail("Expected exception when using wrong session id")
         } catch (e: Exception) {
             assertTrue(e.message?.contains("Transfer rejected") == true || e.message?.contains("403") == true)
         } finally {
             server.stop()
         }
+    }
+
+    @Test
+    fun testSessionIdIsIndependentOfEncryptionKey() {
+        val keys = P2pSessionKeys(ByteArray(32) { 7 })
+        val encHex = keys.encryptionKey.joinToString("") { "%02x".format(it) }
+        assertEquals(64, keys.sessionId.length)
+        assertEquals(32, keys.encryptionKey.size)
+        assertTrue("Session id must not equal the encryption key", keys.sessionId != encHex)
+        assertEquals(keys.sessionId, P2pSessionKeys(ByteArray(32) { 7 }).sessionId)
+    }
+
+    @Test
+    fun testSenderDeclineSendsNothing() = runBlocking {
+        val keys = P2pSessionKeys(ByteArray(32) { 3 })
+        val destFile = File(tempDir, "declined.spvault")
+        var declinedError: String? = null
+
+        val server = P2pTransferServer(
+            expectedSessionId = keys.sessionId,
+            timeoutSeconds = 10,
+            onReceiverConnected = { _, _ -> null },
+            onStatusUpdate = {},
+            onTransferComplete = { fail("Declined transfer must not complete") },
+            onError = { declinedError = it }
+        )
+        server.start(testScope)
+        var attempts = 0
+        while (server.localPort <= 0 && attempts++ < 20) {
+            Thread.sleep(50)
+        }
+
+        try {
+            P2pTransferClient.downloadVault(
+                host = "127.0.0.1",
+                port = server.localPort,
+                sessionId = keys.sessionId,
+                deviceName = "Test",
+                destinationFile = destFile
+            )
+            fail("Expected exception when the sender declines")
+        } catch (e: Exception) {
+            assertTrue(e.message?.contains("Sender declined") == true)
+        } finally {
+            server.stop()
+        }
+        assertEquals("Transfer declined", declinedError)
+        assertTrue(!destFile.exists() || destFile.length() == 0L)
     }
 }
