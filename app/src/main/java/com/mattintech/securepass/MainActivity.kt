@@ -96,6 +96,8 @@ class MainActivity : AppCompatActivity() {
 
     private val barcodeLauncher =
         registerForActivityResult(ScanContract()) { result ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
             if (result.contents != null) {
                 handleScannedQrContent(result.contents)
             }
@@ -103,6 +105,8 @@ class MainActivity : AppCompatActivity() {
 
     private val pickVaultFileLauncher =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
             if (uri != null) {
                 showImportTokenDialog(uri)
             }
@@ -110,6 +114,8 @@ class MainActivity : AppCompatActivity() {
 
     private val pickQrImageLauncher =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
             if (uri != null) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
@@ -972,6 +978,7 @@ class MainActivity : AppCompatActivity() {
             setBarcodeImageEnabled(false)
             setOrientationLocked(false)
         }
+        SessionManager.isExternalOperationActive = true
         barcodeLauncher.launch(options)
     }
 
@@ -1223,10 +1230,15 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun launchVaultFilePicker() {
+        SessionManager.isExternalOperationActive = true
+        pickVaultFileLauncher.launch("*/*")
+    }
+
     private fun promptBiometricForImport() {
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
         if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
-            pickVaultFileLauncher.launch("*/*")
+            launchVaultFilePicker()
             return
         }
 
@@ -1238,14 +1250,14 @@ class MainActivity : AppCompatActivity() {
                 subtitle = "Confirm fingerprint to import vault",
                 cipher = encryptCipher,
                 onSuccess = {
-                    pickVaultFileLauncher.launch("*/*")
+                    launchVaultFilePicker()
                 },
                 onError = { _, msg ->
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 }
             )
         } catch (_: Exception) {
-            pickVaultFileLauncher.launch("*/*")
+            launchVaultFilePicker()
         }
     }
 

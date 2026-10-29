@@ -1,8 +1,10 @@
 package com.mattintech.securepass.locker.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -14,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -105,18 +108,33 @@ class AddDocumentActivity : AppCompatActivity() {
     // Gallery picker
     private val pickImageLauncher =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
             if (uri != null) handleSelectedUri(uri)
         }
 
     // PDF / generic file picker
     private val pickDocumentLauncher =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
             if (uri != null) handleSelectedUri(uri)
         }
 
     // Camera launcher
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                launchCameraCapture()
+            } else {
+                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            }
+        }
+
     private val takePhotoLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
             if (success && tempPhotoFile != null && tempPhotoFile!!.exists()) {
                 val bytes = tempPhotoFile!!.readBytes()
                 val fileName = "Photo_${System.currentTimeMillis()}.jpg"
@@ -385,16 +403,26 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun captureFromCamera(slot: AttachmentSlot, visaTitle: String = "") {
         activeCaptureSlot = slot
         activeVisaTitle = visaTitle
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchCameraCapture()
+        } else {
+            requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun launchCameraCapture() {
         try {
-            val cacheDir = File(cacheDir, "camera").apply { if (!exists()) mkdirs() }
-            tempPhotoFile = File(cacheDir, "temp_${System.currentTimeMillis()}.jpg")
+            val cameraDir = File(cacheDir, "camera").apply { if (!exists()) mkdirs() }
+            tempPhotoFile = File(cameraDir, "doc_${System.currentTimeMillis()}.jpg")
             tempPhotoUri = FileProvider.getUriForFile(
                 this,
                 "$packageName.fileprovider",
                 tempPhotoFile!!
             )
+            SessionManager.isExternalOperationActive = true
             takePhotoLauncher.launch(tempPhotoUri!!)
         } catch (e: Exception) {
+            SessionManager.isExternalOperationActive = false
             Toast.makeText(this, "Could not open camera: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
@@ -402,6 +430,7 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun pickFromGallery(slot: AttachmentSlot, visaTitle: String = "") {
         activeCaptureSlot = slot
         activeVisaTitle = visaTitle
+        SessionManager.isExternalOperationActive = true
         pickImageLauncher.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         )
@@ -410,6 +439,7 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun pickPdf(slot: AttachmentSlot = AttachmentSlot.OTHER) {
         activeCaptureSlot = slot
         activeVisaTitle = ""
+        SessionManager.isExternalOperationActive = true
         pickDocumentLauncher.launch("*/*")
     }
 

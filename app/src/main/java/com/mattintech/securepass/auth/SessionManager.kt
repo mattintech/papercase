@@ -46,6 +46,7 @@ object SessionManager {
     private var isInForeground: Boolean = true
     private var backgroundTimestamp: Long = 0L
     private var appContext: Context? = null
+    var isExternalOperationActive: Boolean = false
 
     private val handler: Handler? by lazy {
         try {
@@ -105,6 +106,14 @@ object SessionManager {
         isInForeground = true
         cancelBackgroundTimer()
 
+        if (isExternalOperationActive) {
+            // Returning from external system camera or document picker
+            keepAlive()
+            isExternalOperationActive = false
+            backgroundTimestamp = 0L
+            return
+        }
+
         // If the app stayed in the background for >= 30 seconds while unlocked, lock and notify
         if (backgroundTimestamp > 0L) {
             val elapsedInBackground = timeProvider() - backgroundTimestamp
@@ -121,6 +130,10 @@ object SessionManager {
      */
     fun onAppEnteredBackground() {
         isInForeground = false
+        if (isExternalOperationActive) {
+            // User is in system camera or file picker; don't auto-lock while actively capturing
+            return
+        }
         if (lastAuthTime > 0L) {
             backgroundTimestamp = timeProvider()
             cancelBackgroundTimer()
