@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SecurePass</string>
+    <string name="app_name">Papercase</string>
     <string name="app_tagline">Hardware-backed biometric security vault</string>
 
     <!-- Status -->
@@ -27,19 +27,19 @@
     <!-- Settings -->
     <string name="settings_title">Automation &amp; Security</string>
     <string name="setting_auto_copy_title">Auto-Copy on App Launch</string>
-    <string name="setting_auto_copy_desc">Prompt for authentication immediately when opening SecurePass and copy passphrase</string>
+    <string name="setting_auto_copy_desc">Prompt for authentication immediately when opening Papercase and copy passphrase</string>
     <string name="setting_auto_minimize_title">Auto-Minimize After Copy</string>
-    <string name="setting_auto_minimize_desc">Send SecurePass to the background immediately so you can paste into your app</string>
+    <string name="setting_auto_minimize_desc">Send Papercase to the background immediately so you can paste into your app</string>
     <string name="setting_auto_clear_title">Auto-Clear Clipboard</string>
     <string name="setting_auto_clear_desc">Erase the passphrase from clipboard after timeout to prevent unauthorized paste</string>
     <string name="setting_timeout_title">Clear Timeout</string>
 
     <!-- How-to / Tips -->
     <string name="guide_title">Hardware Security &amp; Quick Workflow</string>
-    <string name="guide_body">1. Store your long, high-entropy master passphrase in SecurePass.\n2. Keep your databases and vaults protected by hardware biometrics or device PIN/password.\n3. When prompted, simply open SecurePass (or tap the Quick Settings Tile), authenticate, and paste directly!\n4. SecurePass will wipe the clipboard automatically after your timeout.</string>
+    <string name="guide_body">1. Store your long, high-entropy master passphrase in Papercase.\n2. Keep your databases and vaults protected by hardware biometrics or device PIN/password.\n3. When prompted, simply open Papercase (or tap the Quick Settings Tile), authenticate, and paste directly!\n4. Papercase will wipe the clipboard automatically after your timeout.</string>
 
     <!-- Quick Settings Tile -->
-    <string name="tile_label">SecurePass</string>
+    <string name="tile_label">Papercase</string>
     <string name="tile_copy_prompt">Copy Passphrase</string>
 
     <!-- Notification -->

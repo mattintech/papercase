@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SecurePass"
+rootProject.name = "Papercase"
 include(":app")
  

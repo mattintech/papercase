@@ -13,7 +13,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
-        android:name=".SecurePassApp"
+        android:name=".PapercaseApp"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -22,7 +22,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SecurePass">
+        android:theme="@style/Theme.Papercase">
 
         <!-- Main Vault Activity -->
         <activity
@@ -34,7 +34,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <intent-filter>
-                <action android:name="com.mattintech.securepass.ACTION_TRIGGER_COPY" />
+                <action android:name="com.mattintech.papercase.ACTION_TRIGGER_COPY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <!-- P2P transfer QR scanned from the system camera / Google Lens. Only opens a
@@ -43,7 +43,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="securepass" android:host="p2p" />
+                <data android:scheme="papercase" android:host="p2p" />
             </intent-filter>
         </activity>
 
@@ -64,7 +64,7 @@
             android:exported="false"
             android:noHistory="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.SecurePass.Translucent" />
+            android:theme="@style/Theme.Papercase.Translucent" />
 
         <!-- Foreground Service to keep 10-second countdown alive against Samsung Freecess -->
         <service
@@ -78,7 +78,7 @@
 
         <!-- Quick Settings Tile for fast copying without leaving KeePass2Android -->
         <service
-            android:name=".service.SecurePassTileService"
+            android:name=".service.PapercaseTileService"
             android:exported="true"
             android:icon="@drawable/ic_fingerprint"
             android:label="@string/tile_label"

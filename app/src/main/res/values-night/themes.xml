@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base dark application theme (Material 3). -->
-    <style name="Theme.SecurePass" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.Papercase" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary_dark_mode</item>
         <item name="colorOnPrimary">@color/on_primary_dark_mode</item>
         <item name="colorPrimaryContainer">@color/primary_container_dark_mode</item>
@@ -30,21 +30,21 @@
         <item name="android:windowLightNavigationBar">false</item>
 
         <!-- Modern Bottom Navigation styling -->
-        <item name="bottomNavigationStyle">@style/Widget.SecurePass.BottomNavigation</item>
+        <item name="bottomNavigationStyle">@style/Widget.Papercase.BottomNavigation</item>
     </style>
 
-    <style name="Widget.SecurePass.BottomNavigation" parent="Widget.Material3.BottomNavigationView">
+    <style name="Widget.Papercase.BottomNavigation" parent="Widget.Material3.BottomNavigationView">
         <item name="elevation">0dp</item>
         <item name="itemRippleColor">?attr/colorPrimaryContainer</item>
-        <item name="itemActiveIndicatorStyle">@style/Widget.SecurePass.BottomNavIndicator</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.Papercase.BottomNavIndicator</item>
     </style>
 
-    <style name="Widget.SecurePass.BottomNavIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+    <style name="Widget.Papercase.BottomNavIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
         <item name="android:color">?attr/colorPrimaryContainer</item>
     </style>
 
     <!-- Translucent trampoline activity theme for clipboard actions -->
-    <style name="Theme.SecurePass.Translucent" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.Papercase.Translucent" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
