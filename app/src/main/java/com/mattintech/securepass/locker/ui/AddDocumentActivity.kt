@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
@@ -24,6 +25,7 @@ import com.mattintech.securepass.R
 import com.mattintech.securepass.databinding.ActivityAddDocumentBinding
 import com.mattintech.securepass.databinding.ItemAttachmentChipBinding
 import com.mattintech.securepass.locker.crypto.DocumentPasswordCrypto
+import com.mattintech.securepass.locker.data.IssuingAuthorityHelper
 import com.mattintech.securepass.locker.model.AttachmentSlot
 import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.DocumentType
@@ -184,6 +186,11 @@ class AddDocumentActivity : AppCompatActivity() {
         // Date picker for expiry date
         binding.etExpiry.setOnClickListener { showDatePicker() }
         binding.tilExpiry.setEndIconOnClickListener { showDatePicker() }
+
+        // Searchable Country / Authority autocomplete adapter
+        val lookupList = IssuingAuthorityHelper.getLookupList(this)
+        val countryAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, lookupList)
+        binding.actvCountry.setAdapter(countryAdapter)
     }
 
     private fun setupListeners() {
@@ -307,7 +314,7 @@ class AddDocumentActivity : AppCompatActivity() {
         binding.etTitle.setText(doc.title)
         binding.etNumber.setText(doc.documentNumber)
         binding.etExpiry.setText(doc.expirationDate)
-        binding.etCountry.setText(doc.issuingCountry)
+        binding.actvCountry.setText(doc.issuingCountry, false)
         binding.etNotes.setText(doc.notes)
 
         if (doc.isPasswordProtected) {
@@ -665,7 +672,7 @@ class AddDocumentActivity : AppCompatActivity() {
 
         val docNumber = binding.etNumber.text?.toString()?.trim().orEmpty()
         val expiry = binding.etExpiry.text?.toString()?.trim().orEmpty()
-        val country = binding.etCountry.text?.toString()?.trim().orEmpty()
+        val country = binding.actvCountry.text?.toString()?.trim().orEmpty()
         val notes = binding.etNotes.text?.toString()?.trim().orEmpty()
         val docType = getSelectedDocumentType()
 
@@ -762,6 +769,7 @@ class AddDocumentActivity : AppCompatActivity() {
 
                 val success = repository.saveDocument(docToSave)
                 if (success) {
+                    IssuingAuthorityHelper.recordNewAuthority(this@AddDocumentActivity, country)
                     Toast.makeText(this@AddDocumentActivity, "Document & photos securely saved!", Toast.LENGTH_SHORT).show()
                     setResult(Activity.RESULT_OK)
                     finish()

@@ -20,6 +20,20 @@ class PreferencesManager(context: Context) {
         private const val KEY_CLEAR_TIMEOUT_SECONDS = "clear_timeout_seconds"
         private const val KEY_LAST_COPIED_TIME = "last_copied_time"
         private const val KEY_LOCKER_TIMEOUT_MINUTES = "locker_timeout_minutes"
+        private const val KEY_CUSTOM_AUTHORITIES = "custom_issuing_authorities"
+    }
+
+    fun getCustomAuthorities(): Set<String> {
+        return prefs.getStringSet(KEY_CUSTOM_AUTHORITIES, emptySet()) ?: emptySet()
+    }
+
+    fun addCustomAuthority(authority: String) {
+        val trimmed = authority.trim()
+        if (trimmed.isBlank()) return
+        val current = getCustomAuthorities().toMutableSet()
+        if (current.add(trimmed)) {
+            prefs.edit().putStringSet(KEY_CUSTOM_AUTHORITIES, current).apply()
+        }
     }
 
     var lockerTimeoutMinutes: Int
