@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PersistableBundle
@@ -21,6 +22,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.securepass.auth.SessionManager
 import com.mattintech.securepass.clipboard.ClipboardSecurityManager
@@ -33,10 +35,14 @@ import com.mattintech.securepass.databinding.DialogViewPassphraseBinding
 import com.mattintech.securepass.locker.model.DocumentType
 import com.mattintech.securepass.locker.model.SecureDocument
 import com.mattintech.securepass.locker.repository.SecureLockerRepository
+import com.mattintech.securepass.locker.transfer.QrCodeHelper
+import com.mattintech.securepass.locker.transfer.VaultExportImportManager
 import com.mattintech.securepass.locker.ui.AddDocumentActivity
 import com.mattintech.securepass.locker.ui.DocumentViewerActivity
 import com.mattintech.securepass.locker.ui.SecureDocumentsAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -52,10 +58,43 @@ class MainActivity : AppCompatActivity() {
     private var allDocuments: List<SecureDocument> = emptyList()
     private var isLockerUnlocked = false
     private var hasHandledAutoLaunch = false
+    private var activeTokenInput: android.widget.EditText? = null
 
     private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
             // Notification permission handled
+        }
+
+    private val pickVaultFileLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                showImportTokenDialog(uri)
+            }
+        }
+
+    private val pickQrImageLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val inputStream = contentResolver.openInputStream(uri)
+                        val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                        val scannedToken = if (bitmap != null) QrCodeHelper.decodeQrCodeFromBitmap(bitmap) else null
+                        withContext(Dispatchers.Main) {
+                            if (scannedToken != null) {
+                                activeTokenInput?.setText(scannedToken)
+                                Toast.makeText(this@MainActivity, "Token scanned from QR code!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Could not find a valid QR code in selected image", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "Failed to read QR image: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -219,6 +258,11 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Secure Locker locked", Toast.LENGTH_SHORT).show()
         }
 
+        // Vault Transfer (Export / Import) Button
+        binding.btnVaultTransfer.setOnClickListener {
+            showVaultTransferOptions()
+        }
+
         // Settings Switches
         binding.switchAutoCopy.setOnCheckedChangeListener { _, isChecked ->
             prefs.isAutoCopyEnabled = isChecked
@@ -304,6 +348,7 @@ class MainActivity : AppCompatActivity() {
         binding.layoutSecureLocker.visibility = View.GONE
         binding.toolbar.title = getString(R.string.app_name)
         binding.btnLockLocker.visibility = View.GONE
+        binding.btnVaultTransfer.visibility = View.GONE
     }
 
     private fun checkAndShowLockerTab() {
@@ -351,6 +396,7 @@ class MainActivity : AppCompatActivity() {
         binding.layoutSecureLocker.visibility = View.VISIBLE
         binding.toolbar.title = "Secure Locker"
         binding.btnLockLocker.visibility = View.VISIBLE
+        binding.btnVaultTransfer.visibility = View.VISIBLE
         loadSecureLockerDocuments()
     }
 
@@ -620,5 +666,205 @@ class MainActivity : AppCompatActivity() {
             .setView(aboutView)
             .setPositiveButton("Got It", null)
             .show()
+    }
+
+    private fun showVaultTransferOptions() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Encrypted Vault Transfer")
+            .setMessage("Securely export your vault with a QR code & token to transfer to another device, or import a vault backup.")
+            .setPositiveButton("📤 Export Vault") { _, _ ->
+                promptBiometricForExport()
+            }
+            .setNeutralButton("📥 Import Vault") { _, _ ->
+                promptBiometricForImport()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun promptBiometricForExport() {
+        val status = BiometricAuthHelper.checkBiometricAvailability(this)
+        if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
+            executeVaultExport()
+            return
+        }
+
+        try {
+            val encryptCipher = KeystoreHelper.initEncryptCipher()
+            BiometricAuthHelper.promptBiometricWithCrypto(
+                activity = this,
+                title = "Authorize Vault Export",
+                subtitle = "Confirm fingerprint to generate encrypted backup",
+                cipher = encryptCipher,
+                onSuccess = {
+                    executeVaultExport()
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
+            )
+        } catch (_: Exception) {
+            executeVaultExport()
+        }
+    }
+
+    private fun executeVaultExport() {
+        lifecycleScope.launch {
+            try {
+                val token = QrCodeHelper.generateSecureToken()
+                val qrBitmap = QrCodeHelper.generateQrCodeBitmap(token, 512)
+                val exportFile = VaultExportImportManager.exportVault(this@MainActivity, lockerRepository, token)
+
+                val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                    this@MainActivity,
+                    "$packageName.fileprovider",
+                    exportFile
+                )
+                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/octet-stream"
+                    putExtra(android.content.Intent.EXTRA_STREAM, fileUri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(android.content.Intent.createChooser(shareIntent, "Share Encrypted Vault Backup (.spvault)"))
+
+                showExportTokenAndQrDialog(token, qrBitmap)
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showExportTokenAndQrDialog(token: String, qrBitmap: android.graphics.Bitmap) {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val qrImageView = android.widget.ImageView(this).apply {
+            setImageBitmap(qrBitmap)
+            layoutParams = android.widget.LinearLayout.LayoutParams(420, 420).apply {
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+            }
+            adjustViewBounds = true
+        }
+        layout.addView(qrImageView)
+
+        val tokenTextView = android.widget.TextView(this).apply {
+            text = token
+            setTextIsSelectable(true)
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 15f
+            setTextColor(MaterialColors.getColor(this@MainActivity, androidx.appcompat.R.attr.colorPrimary, android.graphics.Color.BLUE))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 24, 0, 12)
+        }
+        layout.addView(tokenTextView)
+
+        val helpTextView = android.widget.TextView(this).apply {
+            text = "1. Transfer the .spvault file to your other device.\n2. In SecurePass on the other device, tap Import Vault and scan this QR code or enter the token above."
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+        }
+        layout.addView(helpTextView)
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Encrypted Vault Exported")
+            .setView(layout)
+            .setPositiveButton("Done", null)
+            .setNeutralButton("Copy Token") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("SecurePass Token", token))
+                Toast.makeText(this, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun promptBiometricForImport() {
+        val status = BiometricAuthHelper.checkBiometricAvailability(this)
+        if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
+            pickVaultFileLauncher.launch("*/*")
+            return
+        }
+
+        try {
+            val encryptCipher = KeystoreHelper.initEncryptCipher()
+            BiometricAuthHelper.promptBiometricWithCrypto(
+                activity = this,
+                title = "Authorize Vault Import",
+                subtitle = "Confirm fingerprint to import vault",
+                cipher = encryptCipher,
+                onSuccess = {
+                    pickVaultFileLauncher.launch("*/*")
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
+            )
+        } catch (_: Exception) {
+            pickVaultFileLauncher.launch("*/*")
+        }
+    }
+
+    private fun showImportTokenDialog(fileUri: Uri) {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 16)
+        }
+
+        val tokenInput = android.widget.EditText(this).apply {
+            hint = "SPVT-XXXX-XXXX-XXXX-XXXX-XXXX"
+            typeface = android.graphics.Typeface.MONOSPACE
+            inputType = android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        activeTokenInput = tokenInput
+        layout.addView(tokenInput)
+
+        val btnScanQr = com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialButtonTonalStyle).apply {
+            text = "📷 Scan QR Code Image"
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 16
+            }
+            setOnClickListener {
+                pickQrImageLauncher.launch(
+                    androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            }
+        }
+        layout.addView(btnScanQr)
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Enter Secure Token")
+            .setMessage("Enter the Secure Token or scan the QR code from the exporting device to decrypt the vault:")
+            .setView(layout)
+            .setPositiveButton("Decrypt & Import") { _, _ ->
+                val token = tokenInput.text.toString().trim()
+                if (token.isBlank()) {
+                    Toast.makeText(this, "Token cannot be empty", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                executeVaultImport(fileUri, token)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun executeVaultImport(fileUri: Uri, token: String) {
+        lifecycleScope.launch {
+            try {
+                val count = VaultExportImportManager.importVault(this@MainActivity, lockerRepository, fileUri, token)
+                Toast.makeText(this@MainActivity, "Successfully imported $count documents!", Toast.LENGTH_LONG).show()
+                loadSecureLockerDocuments()
+            } catch (e: Exception) {
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("Import Failed")
+                    .setMessage(e.message ?: "Could not decrypt vault backup.")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
     }
 }

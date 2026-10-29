@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Base64
 import androidx.core.content.FileProvider
+import com.mattintech.securepass.locker.crypto.DocumentPasswordCrypto
 import com.mattintech.securepass.locker.crypto.LockerKeystoreHelper
 import com.mattintech.securepass.locker.model.AttachmentSlot
 import com.mattintech.securepass.locker.model.DocumentAttachment
@@ -14,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import javax.crypto.SecretKey
 
 class SecureLockerRepository(private val context: Context) {
 
@@ -107,9 +109,14 @@ class SecureLockerRepository(private val context: Context) {
         mimeType: String,
         data: ByteArray,
         slot: AttachmentSlot = AttachmentSlot.FRONT,
-        customTitle: String = ""
+        customTitle: String = "",
+        customDek: SecretKey? = null
     ): DocumentAttachment = withContext(Dispatchers.IO) {
-        val (cipherBytes, ivBytes) = LockerKeystoreHelper.encryptBytes(data)
+        val (cipherBytes, ivBytes) = if (customDek != null) {
+            DocumentPasswordCrypto.encryptWithDek(data, customDek)
+        } else {
+            LockerKeystoreHelper.encryptBytes(data)
+        }
         val encryptedFileName = "${UUID.randomUUID()}.bin"
         val encFile = File(filesDir, encryptedFileName)
         encFile.writeBytes(cipherBytes)
@@ -126,19 +133,30 @@ class SecureLockerRepository(private val context: Context) {
         )
     }
 
-    suspend fun readAttachmentBytes(attachment: DocumentAttachment): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun readAttachmentBytes(
+        attachment: DocumentAttachment,
+        customDek: SecretKey? = null
+    ): ByteArray = withContext(Dispatchers.IO) {
         val encFile = File(filesDir, attachment.encryptedFileName)
         if (!encFile.exists()) return@withContext ByteArray(0)
 
         val cipherBytes = encFile.readBytes()
         val ivBytes = java.util.Base64.getDecoder().decode(attachment.ivBase64)
-        LockerKeystoreHelper.decryptBytes(cipherBytes, ivBytes)
+
+        if (customDek != null) {
+            DocumentPasswordCrypto.decryptWithDek(cipherBytes, ivBytes, customDek)
+        } else {
+            LockerKeystoreHelper.decryptBytes(cipherBytes, ivBytes)
+        }
     }
 
-    suspend fun exportAttachmentForShare(attachment: DocumentAttachment): Uri = withContext(Dispatchers.IO) {
+    suspend fun exportAttachmentForShare(
+        attachment: DocumentAttachment,
+        customDek: SecretKey? = null
+    ): Uri = withContext(Dispatchers.IO) {
         val sharedDir = File(context.cacheDir, "shared_docs").apply { if (!exists()) mkdirs() }
         val tempFile = File(sharedDir, attachment.fileName)
-        val decryptedBytes = readAttachmentBytes(attachment)
+        val decryptedBytes = readAttachmentBytes(attachment, customDek)
         tempFile.writeBytes(decryptedBytes)
 
         FileProvider.getUriForFile(

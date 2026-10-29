@@ -14,6 +14,9 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.securepass.R
@@ -21,6 +24,7 @@ import com.mattintech.securepass.crypto.BiometricAuthHelper
 import com.mattintech.securepass.crypto.KeystoreHelper
 import com.mattintech.securepass.databinding.ActivityDocumentViewerBinding
 import com.mattintech.securepass.databinding.ItemViewerAttachmentBinding
+import com.mattintech.securepass.locker.crypto.DocumentPasswordCrypto
 import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.SecureDocument
 import com.mattintech.securepass.locker.repository.SecureLockerRepository
@@ -29,6 +33,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Base64
+import javax.crypto.SecretKey
 
 class DocumentViewerActivity : AppCompatActivity() {
 
@@ -47,6 +53,8 @@ class DocumentViewerActivity : AppCompatActivity() {
     private lateinit var repository: SecureLockerRepository
     private var documentId: String? = null
     private var currentDocument: SecureDocument? = null
+    private var unlockedDek: SecretKey? = null
+    private var hasPromptedPassword = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,7 +75,28 @@ class DocumentViewerActivity : AppCompatActivity() {
             return
         }
 
+        setupWindowInsets()
         setupToolbar()
+    }
+
+    private fun setupWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val statusBarInsets = insets.getInsets(
+                WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            binding.appBarLayout.updatePadding(
+                top = statusBarInsets.top,
+                left = statusBarInsets.left,
+                right = statusBarInsets.right
+            )
+            val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            binding.nestedScrollView.updatePadding(
+                bottom = navBarInsets.bottom + 24,
+                left = navBarInsets.left,
+                right = navBarInsets.right
+            )
+            insets
+        }
     }
 
     override fun onResume() {
@@ -108,9 +137,53 @@ class DocumentViewerActivity : AppCompatActivity() {
                 return@launch
             }
             currentDocument = doc
-            renderDocumentDetails(doc)
-            decryptAndRenderAttachments(doc.attachments)
+
+            if (doc.isPasswordProtected && unlockedDek == null) {
+                if (!hasPromptedPassword) {
+                    hasPromptedPassword = true
+                    promptPasswordToView(doc)
+                }
+            } else {
+                renderDocumentDetails(doc)
+                decryptAndRenderAttachments(doc.attachments, unlockedDek)
+            }
         }
+    }
+
+    private fun promptPasswordToView(doc: SecureDocument) {
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Enter document password"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Password Protected")
+            .setMessage("This document is protected with a custom password. Enter it to view details:")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Unlock") { _, _ ->
+                val password = input.text.toString()
+                val salt = try {
+                    Base64.getDecoder().decode(doc.passwordSaltBase64)
+                } catch (_: Exception) {
+                    ByteArray(0)
+                }
+                val passwordKey = DocumentPasswordCrypto.deriveKeyFromPassword(password.toCharArray(), salt)
+                val dek = DocumentPasswordCrypto.decryptDek(doc.encryptedDekBase64, doc.dekIvBase64, passwordKey)
+
+                if (dek != null) {
+                    unlockedDek = dek
+                    renderDocumentDetails(doc)
+                    decryptAndRenderAttachments(doc.attachments, dek)
+                } else {
+                    Toast.makeText(this, "Incorrect document password", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                finish()
+            }
+            .show()
     }
 
     private fun renderDocumentDetails(doc: SecureDocument) {
@@ -155,7 +228,7 @@ class DocumentViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun decryptAndRenderAttachments(attachments: List<DocumentAttachment>) {
+    private fun decryptAndRenderAttachments(attachments: List<DocumentAttachment>, dek: SecretKey? = null) {
         binding.layoutDecryptedAttachments.removeAllViews()
 
         if (attachments.isEmpty()) {
@@ -184,7 +257,7 @@ class DocumentViewerActivity : AppCompatActivity() {
             // Decrypt attachment in memory on background thread
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val decryptedBytes = repository.readAttachmentBytes(attachment)
+                    val decryptedBytes = repository.readAttachmentBytes(attachment, dek)
                     if (decryptedBytes.isEmpty()) {
                         withContext(Dispatchers.Main) {
                             itemBinding.progressDecrypt.visibility = View.GONE
@@ -346,7 +419,7 @@ class DocumentViewerActivity : AppCompatActivity() {
     private fun shareAttachmentDirectly(attachment: DocumentAttachment) {
         lifecycleScope.launch {
             try {
-                val uri = repository.exportAttachmentForShare(attachment)
+                val uri = repository.exportAttachmentForShare(attachment, unlockedDek)
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = attachment.mimeType
                     putExtra(Intent.EXTRA_STREAM, uri)

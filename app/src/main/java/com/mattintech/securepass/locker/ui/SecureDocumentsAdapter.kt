@@ -34,6 +34,7 @@ class SecureDocumentsAdapter(
         fun bind(doc: SecureDocument) {
             binding.tvDocTitle.text = doc.title
             binding.ivDocIcon.setImageResource(doc.type.iconRes)
+            binding.ivPasswordLock.visibility = if (doc.isPasswordProtected) View.VISIBLE else View.GONE
 
             val typeDesc = if (doc.issuingCountry.isNotBlank()) {
                 "${doc.type.displayName} • ${doc.issuingCountry}"

@@ -98,6 +98,10 @@ data class SecureDocument(
     val issuingCountry: String = "",
     val notes: String = "",
     val attachments: List<DocumentAttachment> = emptyList(),
+    val isPasswordProtected: Boolean = false,
+    val passwordSaltBase64: String = "",
+    val encryptedDekBase64: String = "",
+    val dekIvBase64: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -148,6 +152,10 @@ data class SecureDocument(
             put("expirationDate", expirationDate)
             put("issuingCountry", issuingCountry)
             put("notes", notes)
+            put("isPasswordProtected", isPasswordProtected)
+            put("passwordSaltBase64", passwordSaltBase64)
+            put("encryptedDekBase64", encryptedDekBase64)
+            put("dekIvBase64", dekIvBase64)
             put("createdAt", createdAt)
             put("updatedAt", updatedAt)
 
@@ -179,6 +187,10 @@ data class SecureDocument(
                 issuingCountry = json.optString("issuingCountry", ""),
                 notes = json.optString("notes", ""),
                 attachments = attList,
+                isPasswordProtected = json.optBoolean("isPasswordProtected", false),
+                passwordSaltBase64 = json.optString("passwordSaltBase64", ""),
+                encryptedDekBase64 = json.optString("encryptedDekBase64", ""),
+                dekIvBase64 = json.optString("dekIvBase64", ""),
                 createdAt = json.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
             )

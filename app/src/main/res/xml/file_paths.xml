@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="shared_docs" path="shared_docs/" />
+    <cache-path name="vault_exports" path="vault_exports/" />
+    <cache-path name="camera" path="camera/" />
 </paths>

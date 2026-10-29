@@ -14,12 +14,16 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.datepicker.MaterialDatePicker
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.securepass.R
 import com.mattintech.securepass.databinding.ActivityAddDocumentBinding
 import com.mattintech.securepass.databinding.ItemAttachmentChipBinding
+import com.mattintech.securepass.locker.crypto.DocumentPasswordCrypto
 import com.mattintech.securepass.locker.model.AttachmentSlot
 import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.DocumentType
@@ -30,8 +34,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Base64
 import java.util.Date
 import java.util.Locale
+import javax.crypto.SecretKey
 
 class AddDocumentActivity : AppCompatActivity() {
 
@@ -138,6 +144,7 @@ class AddDocumentActivity : AppCompatActivity() {
         repository = SecureLockerRepository(this)
         editingDocumentId = intent.getStringExtra(EXTRA_DOCUMENT_ID)
 
+        setupWindowInsets()
         setupUI()
         setupListeners()
 
@@ -146,6 +153,28 @@ class AddDocumentActivity : AppCompatActivity() {
         } else {
             updateDocumentTypeUI(getSelectedDocumentType())
             renderAttachmentsUI()
+        }
+    }
+
+    private fun setupWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val statusBarInsets = insets.getInsets(
+                WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            binding.appBarLayout.updatePadding(
+                top = statusBarInsets.top,
+                left = statusBarInsets.left,
+                right = statusBarInsets.right
+            )
+            val navBarInsets = insets.getInsets(
+                WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.ime()
+            )
+            binding.nestedScrollView.updatePadding(
+                bottom = navBarInsets.bottom + 32,
+                left = navBarInsets.left,
+                right = navBarInsets.right
+            )
+            insets
         }
     }
 
@@ -158,6 +187,11 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
+        // Password protection switch toggle
+        binding.switchPasswordProtect.setOnCheckedChangeListener { _, isChecked ->
+            binding.layoutPasswordFields.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
         // Document Type Chip change
         binding.chipGroupDocType.setOnCheckedStateChangeListener { _, _ ->
             updateDocumentTypeUI(getSelectedDocumentType())
@@ -218,50 +252,103 @@ class AddDocumentActivity : AppCompatActivity() {
         }
     }
 
+    private var unlockedDek: SecretKey? = null
+
     private fun loadExistingDocument(docId: String) {
         lifecycleScope.launch {
             val doc = repository.getDocumentById(docId) ?: return@launch
             existingDocument = doc
-            binding.toolbar.title = "Edit Document"
-            binding.etTitle.setText(doc.title)
-            binding.etNumber.setText(doc.documentNumber)
-            binding.etExpiry.setText(doc.expirationDate)
-            binding.etCountry.setText(doc.issuingCountry)
-            binding.etNotes.setText(doc.notes)
 
-            when (doc.type) {
-                DocumentType.DRIVERS_LICENSE -> binding.chipDriversLicense.isChecked = true
-                DocumentType.PASSPORT -> binding.chipPassport.isChecked = true
-                DocumentType.ID_CARD -> binding.chipIdCard.isChecked = true
-                DocumentType.INSURANCE -> binding.chipInsurance.isChecked = true
-                DocumentType.PDF_DOCUMENT -> binding.chipPdf.isChecked = true
-                DocumentType.OTHER -> binding.chipOther.isChecked = true
+            if (doc.isPasswordProtected) {
+                promptPasswordToEdit(doc)
+            } else {
+                populateDocumentFields(doc)
             }
+        }
+    }
 
-            frontAttachment = null
-            backAttachment = null
-            visaAttachments.clear()
-            otherAttachments.clear()
+    private fun promptPasswordToEdit(doc: SecureDocument) {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Enter document password"
+        }
 
-            doc.attachments.forEach { att ->
-                val item = AttachmentItem.Existing(att)
-                when (att.slot) {
-                    AttachmentSlot.FRONT -> {
-                        if (frontAttachment == null) frontAttachment = item
-                        else otherAttachments.add(item)
-                    }
-                    AttachmentSlot.BACK -> {
-                        if (backAttachment == null) backAttachment = item
-                        else otherAttachments.add(item)
-                    }
-                    AttachmentSlot.VISA -> visaAttachments.add(item)
-                    AttachmentSlot.OTHER -> otherAttachments.add(item)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Password Protected")
+            .setMessage("This document is protected with a custom password. Enter it to edit:")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Unlock") { _, _ ->
+                val password = input.text.toString()
+                val salt = try {
+                    Base64.getDecoder().decode(doc.passwordSaltBase64)
+                } catch (_: Exception) {
+                    ByteArray(0)
+                }
+                val passwordKey = DocumentPasswordCrypto.deriveKeyFromPassword(password.toCharArray(), salt)
+                val dek = DocumentPasswordCrypto.decryptDek(doc.encryptedDekBase64, doc.dekIvBase64, passwordKey)
+
+                if (dek != null) {
+                    unlockedDek = dek
+                    populateDocumentFields(doc)
+                } else {
+                    Toast.makeText(this, "Incorrect document password", Toast.LENGTH_SHORT).show()
+                    finish()
                 }
             }
+            .setNegativeButton("Cancel") { _, _ ->
+                finish()
+            }
+            .show()
+    }
 
-            updateDocumentTypeUI(doc.type)
-            renderAttachmentsUI()
+    private fun populateDocumentFields(doc: SecureDocument) {
+        binding.toolbar.title = "Edit Document"
+        binding.etTitle.setText(doc.title)
+        binding.etNumber.setText(doc.documentNumber)
+        binding.etExpiry.setText(doc.expirationDate)
+        binding.etCountry.setText(doc.issuingCountry)
+        binding.etNotes.setText(doc.notes)
+
+        if (doc.isPasswordProtected) {
+            binding.switchPasswordProtect.isChecked = true
+            binding.layoutPasswordFields.visibility = View.VISIBLE
+            binding.tilDocumentPassword.hint = "Change Password (leave blank to keep)"
+            binding.tilConfirmDocumentPassword.hint = "Confirm New Password"
         }
+
+        when (doc.type) {
+            DocumentType.DRIVERS_LICENSE -> binding.chipDriversLicense.isChecked = true
+            DocumentType.PASSPORT -> binding.chipPassport.isChecked = true
+            DocumentType.ID_CARD -> binding.chipIdCard.isChecked = true
+            DocumentType.INSURANCE -> binding.chipInsurance.isChecked = true
+            DocumentType.PDF_DOCUMENT -> binding.chipPdf.isChecked = true
+            DocumentType.OTHER -> binding.chipOther.isChecked = true
+        }
+
+        frontAttachment = null
+        backAttachment = null
+        visaAttachments.clear()
+        otherAttachments.clear()
+
+        doc.attachments.forEach { att ->
+            val item = AttachmentItem.Existing(att)
+            when (att.slot) {
+                AttachmentSlot.FRONT -> {
+                    if (frontAttachment == null) frontAttachment = item
+                    else otherAttachments.add(item)
+                }
+                AttachmentSlot.BACK -> {
+                    if (backAttachment == null) backAttachment = item
+                    else otherAttachments.add(item)
+                }
+                AttachmentSlot.VISA -> visaAttachments.add(item)
+                AttachmentSlot.OTHER -> otherAttachments.add(item)
+            }
+        }
+
+        updateDocumentTypeUI(doc.type)
+        renderAttachmentsUI()
     }
 
     private fun showDatePicker() {
@@ -507,7 +594,7 @@ class AddDocumentActivity : AppCompatActivity() {
                 // Decrypt async
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        val bytes = repository.readAttachmentBytes(item.docAttachment)
+                        val bytes = repository.readAttachmentBytes(item.docAttachment, unlockedDek)
                         if (bytes.isNotEmpty()) {
                             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                             withContext(Dispatchers.Main) {
@@ -553,6 +640,29 @@ class AddDocumentActivity : AppCompatActivity() {
         }
         binding.tilTitle.error = null
 
+        val isPasswordProtect = binding.switchPasswordProtect.isChecked
+        val enteredPassword = binding.etDocumentPassword.text?.toString().orEmpty()
+        val confirmPassword = binding.etConfirmDocumentPassword.text?.toString().orEmpty()
+
+        if (isPasswordProtect) {
+            val isKeepingExisting = existingDocument?.isPasswordProtected == true &&
+                    enteredPassword.isBlank() &&
+                    unlockedDek != null
+
+            if (!isKeepingExisting) {
+                if (enteredPassword.isBlank()) {
+                    binding.tilDocumentPassword.error = "Password required"
+                    return
+                }
+                if (enteredPassword != confirmPassword) {
+                    binding.tilConfirmDocumentPassword.error = "Passwords do not match"
+                    return
+                }
+            }
+        }
+        binding.tilDocumentPassword.error = null
+        binding.tilConfirmDocumentPassword.error = null
+
         val docNumber = binding.etNumber.text?.toString()?.trim().orEmpty()
         val expiry = binding.etExpiry.text?.toString()?.trim().orEmpty()
         val country = binding.etCountry.text?.toString()?.trim().orEmpty()
@@ -563,6 +673,34 @@ class AddDocumentActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                var activeDek: SecretKey? = null
+                var passwordSaltBase64 = ""
+                var encryptedDekBase64 = ""
+                var dekIvBase64 = ""
+
+                if (isPasswordProtect) {
+                    val isKeepingExisting = existingDocument?.isPasswordProtected == true &&
+                            enteredPassword.isBlank() &&
+                            unlockedDek != null
+
+                    if (isKeepingExisting) {
+                        activeDek = unlockedDek
+                        passwordSaltBase64 = existingDocument!!.passwordSaltBase64
+                        encryptedDekBase64 = existingDocument!!.encryptedDekBase64
+                        dekIvBase64 = existingDocument!!.dekIvBase64
+                    } else {
+                        val salt = DocumentPasswordCrypto.generateSalt()
+                        val passKey = DocumentPasswordCrypto.deriveKeyFromPassword(enteredPassword.toCharArray(), salt)
+                        val newDek = DocumentPasswordCrypto.generateDek()
+                        val (encDek, iv) = DocumentPasswordCrypto.encryptDek(newDek, passKey)
+
+                        activeDek = newDek
+                        passwordSaltBase64 = Base64.getEncoder().encodeToString(salt)
+                        encryptedDekBase64 = encDek
+                        dekIvBase64 = iv
+                    }
+                }
+
                 val finalAttachments = mutableListOf<DocumentAttachment>()
 
                 val allItems = mutableListOf<AttachmentItem>()
@@ -587,7 +725,8 @@ class AddDocumentActivity : AppCompatActivity() {
                                 mimeType = item.mimeType,
                                 data = item.bytes,
                                 slot = item.slot,
-                                customTitle = item.customTitle
+                                customTitle = item.customTitle,
+                                customDek = activeDek
                             )
                             finalAttachments.add(saved)
                         }
@@ -602,6 +741,10 @@ class AddDocumentActivity : AppCompatActivity() {
                     issuingCountry = country,
                     notes = notes,
                     attachments = finalAttachments,
+                    isPasswordProtected = isPasswordProtect,
+                    passwordSaltBase64 = passwordSaltBase64,
+                    encryptedDekBase64 = encryptedDekBase64,
+                    dekIvBase64 = dekIvBase64,
                     updatedAt = System.currentTimeMillis()
                 ) ?: SecureDocument(
                     title = title,
@@ -610,7 +753,11 @@ class AddDocumentActivity : AppCompatActivity() {
                     expirationDate = expiry,
                     issuingCountry = country,
                     notes = notes,
-                    attachments = finalAttachments
+                    attachments = finalAttachments,
+                    isPasswordProtected = isPasswordProtect,
+                    passwordSaltBase64 = passwordSaltBase64,
+                    encryptedDekBase64 = encryptedDekBase64,
+                    dekIvBase64 = dekIvBase64
                 )
 
                 val success = repository.saveDocument(docToSave)
