@@ -52,7 +52,7 @@ object KeystoreHelper {
         }
     }
 
-    fun generateKey() {
+    fun generateKey(requireUserAuth: Boolean = true) {
         deleteKey()
 
         val keyGenerator = KeyGenerator.getInstance(
@@ -67,12 +67,26 @@ object KeystoreHelper {
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
-            .setUserAuthenticationRequired(true)
-            .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-            .setInvalidatedByBiometricEnrollment(true)
 
-        keyGenerator.init(builder.build())
-        keyGenerator.generateKey()
+        if (requireUserAuth) {
+            builder.setUserAuthenticationRequired(true)
+            builder.setUserAuthenticationParameters(
+                0,
+                KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+            )
+        } else {
+            builder.setUserAuthenticationRequired(false)
+        }
+
+        try {
+            keyGenerator.init(builder.build())
+            keyGenerator.generateKey()
+        } catch (_: Exception) {
+            if (requireUserAuth) {
+                // If device has no screen lock enrolled, fallback to generating without user auth
+                generateKey(requireUserAuth = false)
+            }
+        }
     }
 
     private fun getSecretKey(): SecretKey {

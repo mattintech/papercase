@@ -55,7 +55,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:text="You will be prompted for your fingerprint to seal this passphrase into the keystore."
+            android:text="You will be prompted for biometric or screen lock authentication to seal this passphrase into the keystore."
             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

@@ -4,7 +4,7 @@
 
     <!-- Status -->
     <string name="status_protected">Passphrase Secured</string>
-    <string name="status_protected_desc">Hardware-encrypted &amp; protected by biometric fingerprint</string>
+    <string name="status_protected_desc">Hardware-encrypted &amp; protected by biometric or screen lock</string>
     <string name="status_not_set">No Passphrase Configured</string>
     <string name="status_not_set_desc">Store your master passphrase here so you don\'t have to type it on mobile</string>
 
@@ -27,7 +27,7 @@
     <!-- Settings -->
     <string name="settings_title">Automation &amp; Security</string>
     <string name="setting_auto_copy_title">Auto-Copy on App Launch</string>
-    <string name="setting_auto_copy_desc">Prompt for fingerprint immediately when opening SecurePass and copy passphrase</string>
+    <string name="setting_auto_copy_desc">Prompt for authentication immediately when opening SecurePass and copy passphrase</string>
     <string name="setting_auto_minimize_title">Auto-Minimize After Copy</string>
     <string name="setting_auto_minimize_desc">Send SecurePass to the background immediately so you can paste into your app</string>
     <string name="setting_auto_clear_title">Auto-Clear Clipboard</string>
@@ -36,7 +36,7 @@
 
     <!-- How-to / Tips -->
     <string name="guide_title">Hardware Security &amp; Quick Workflow</string>
-    <string name="guide_body">1. Store your long, high-entropy master passphrase in SecurePass.\n2. Keep your databases and vaults protected by hardware biometrics.\n3. When prompted, simply open SecurePass (or tap the Quick Settings Tile), touch your fingerprint, and paste directly!\n4. SecurePass will wipe the clipboard automatically after your timeout.</string>
+    <string name="guide_body">1. Store your long, high-entropy master passphrase in SecurePass.\n2. Keep your databases and vaults protected by hardware biometrics or device PIN/password.\n3. When prompted, simply open SecurePass (or tap the Quick Settings Tile), authenticate, and paste directly!\n4. SecurePass will wipe the clipboard automatically after your timeout.</string>
 
     <!-- Quick Settings Tile -->
     <string name="tile_label">SecurePass</string>
@@ -51,9 +51,9 @@
 
     <!-- Biometric Dialogs -->
     <string name="biometric_copy_title">Unlock Passphrase</string>
-    <string name="biometric_copy_subtitle">Confirm fingerprint to copy master passphrase</string>
+    <string name="biometric_copy_subtitle">Confirm biometric or screen lock to copy master passphrase</string>
     <string name="biometric_view_title">View Passphrase</string>
-    <string name="biometric_view_subtitle">Confirm fingerprint to view master passphrase</string>
+    <string name="biometric_view_subtitle">Confirm biometric or screen lock to view master passphrase</string>
     <string name="biometric_save_title">Save Passphrase</string>
-    <string name="biometric_save_subtitle">Confirm fingerprint to encrypt passphrase with hardware key</string>
+    <string name="biometric_save_subtitle">Confirm biometric or screen lock to encrypt passphrase with hardware key</string>
 </resources>

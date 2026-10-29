@@ -473,7 +473,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Biometric challenge to unlock personal vault (OneDrive Personal Vault style)
+        // Biometric / Device PIN challenge to unlock personal vault (OneDrive Personal Vault style)
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
         if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
             SessionManager.markAuthenticated()
@@ -482,28 +482,20 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val encryptCipher = KeystoreHelper.initEncryptCipher()
-            BiometricAuthHelper.promptBiometricWithCrypto(
-                activity = this,
-                title = "Unlock Secure Locker",
-                subtitle = "Confirm fingerprint to access your passport, license & documents",
-                cipher = encryptCipher,
-                onSuccess = {
-                    SessionManager.markAuthenticated()
-                    isLockerUnlocked = true
-                    displayLockerTab()
-                },
-                onError = { _, _ ->
-                    // Revert tab back to passphrase
-                    binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
-                }
-            )
-        } catch (e: Exception) {
-            SessionManager.markAuthenticated()
-            isLockerUnlocked = true
-            displayLockerTab()
-        }
+        BiometricAuthHelper.promptGeneralUnlock(
+            activity = this,
+            title = "Unlock Secure Locker",
+            subtitle = "Authenticate with biometric or device PIN/password",
+            onSuccess = {
+                SessionManager.markAuthenticated()
+                isLockerUnlocked = true
+                displayLockerTab()
+            },
+            onError = { _, _ ->
+                // Revert tab back to passphrase
+                binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+            }
+        )
     }
 
     private fun displayLockerTab() {
@@ -558,6 +550,51 @@ class MainActivity : AppCompatActivity() {
             binding.layoutVaultActions.visibility = View.GONE
             binding.btnInitialSetup.visibility = View.VISIBLE
         }
+        updateSecurityStatusUI()
+    }
+
+    private fun updateSecurityStatusUI() {
+        when (BiometricAuthHelper.getDeviceSecurityLevel(this)) {
+            is BiometricAuthHelper.SecurityLevel.Biometric -> {
+                binding.tvSecurityPill.setBackgroundResource(R.drawable.bg_status_pill)
+                binding.tvSecurityPill.setTextColor(ContextCompat.getColor(this, R.color.status_protected))
+                binding.tvSecurityPill.text = "🔒 BIOMETRIC ENCRYPTED"
+                binding.tvSecuritySubtitle.text = "Hardware Keystore (TEE)"
+                binding.tvSecurityPill.isClickable = false
+            }
+            is BiometricAuthHelper.SecurityLevel.DeviceCredential -> {
+                binding.tvSecurityPill.setBackgroundResource(R.drawable.bg_status_pill)
+                binding.tvSecurityPill.setTextColor(ContextCompat.getColor(this, R.color.primary))
+                binding.tvSecurityPill.text = "🔑 PIN / PASSWORD PROTECTED"
+                binding.tvSecuritySubtitle.text = "Device Credential"
+                binding.tvSecurityPill.isClickable = false
+            }
+            else -> {
+                binding.tvSecurityPill.setBackgroundResource(R.drawable.bg_status_warning_pill)
+                binding.tvSecurityPill.setTextColor(ContextCompat.getColor(this, R.color.status_warning))
+                binding.tvSecurityPill.text = "⚠️ UNPROTECTED DEVICE"
+                binding.tvSecuritySubtitle.text = "No Screen Lock Set"
+                binding.tvSecurityPill.isClickable = true
+                binding.tvSecurityPill.setOnClickListener {
+                    showUnprotectedDeviceDialog()
+                }
+            }
+        }
+    }
+
+    private fun showUnprotectedDeviceDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Device Not Protected")
+            .setMessage("This device has no PIN, pattern, password, or biometric lock set up.\n\nWithout a screen lock, Android Keystore cannot enforce hardware user authentication. To protect your vault, please configure a screen lock in Android Settings.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                try {
+                    startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                } catch (_: Exception) {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton("Dismiss", null)
+            .show()
     }
 
     private fun observeClipboardState() {
@@ -763,17 +800,24 @@ class MainActivity : AppCompatActivity() {
     private fun showBiometricUnavailableDialog(status: BiometricAuthHelper.BiometricStatus) {
         val message = when (status) {
             is BiometricAuthHelper.BiometricStatus.NoneEnrolled ->
-                "No fingerprints are currently enrolled on this device. Please enroll a fingerprint in Android Settings to use SecurePass."
+                "No screen lock (PIN, Pattern, Password) or Biometric credentials are set up on this device. Please set up a screen lock in Android Settings to protect your vault."
             is BiometricAuthHelper.BiometricStatus.NoHardware ->
-                "This device does not have biometric hardware."
+                "This device does not have biometric hardware, and no screen lock credentials are set."
             else ->
-                "Biometric authentication is currently unavailable."
+                "Device security authentication is currently unavailable."
         }
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("Fingerprint Required")
+            .setTitle("Screen Lock Required")
             .setMessage(message)
-            .setPositiveButton("OK", null)
+            .setPositiveButton("Open Settings") { _, _ ->
+                try {
+                    startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                } catch (_: Exception) {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -839,23 +883,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val encryptCipher = KeystoreHelper.initEncryptCipher()
-            BiometricAuthHelper.promptBiometricWithCrypto(
-                activity = this,
-                title = "Authorize Nearby Transfer",
-                subtitle = "Confirm fingerprint to send encrypted vault",
-                cipher = encryptCipher,
-                onSuccess = {
-                    executeP2pSend(localIp)
-                },
-                onError = { _, msg ->
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                }
-            )
-        } catch (_: Exception) {
-            executeP2pSend(localIp)
-        }
+        BiometricAuthHelper.promptGeneralUnlock(
+            activity = this,
+            title = "Authorize Nearby Transfer",
+            subtitle = "Authenticate to send encrypted vault",
+            onSuccess = {
+                executeP2pSend(localIp)
+            },
+            onError = { _, msg ->
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     private fun executeP2pSend(localIp: String) {
@@ -950,22 +988,18 @@ class MainActivity : AppCompatActivity() {
     private fun checkCameraAndLaunchScanner() {
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
         if (status is BiometricAuthHelper.BiometricStatus.Ready) {
-            try {
-                val encryptCipher = KeystoreHelper.initEncryptCipher()
-                BiometricAuthHelper.promptBiometricWithCrypto(
-                    activity = this,
-                    title = "Authorize Vault Receive",
-                    subtitle = "Confirm fingerprint to receive vault",
-                    cipher = encryptCipher,
-                    onSuccess = {
-                        proceedWithCameraCheck()
-                    },
-                    onError = { _, msg ->
-                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                    }
-                )
-                return
-            } catch (_: Exception) {}
+            BiometricAuthHelper.promptGeneralUnlock(
+                activity = this,
+                title = "Authorize Vault Receive",
+                subtitle = "Authenticate to receive vault",
+                onSuccess = {
+                    proceedWithCameraCheck()
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
+            )
+            return
         }
         proceedWithCameraCheck()
     }
@@ -1143,23 +1177,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val encryptCipher = KeystoreHelper.initEncryptCipher()
-            BiometricAuthHelper.promptBiometricWithCrypto(
-                activity = this,
-                title = "Authorize Vault Export",
-                subtitle = "Confirm fingerprint to generate encrypted backup",
-                cipher = encryptCipher,
-                onSuccess = {
-                    executeVaultExport()
-                },
-                onError = { _, msg ->
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                }
-            )
-        } catch (_: Exception) {
-            executeVaultExport()
-        }
+        BiometricAuthHelper.promptGeneralUnlock(
+            activity = this,
+            title = "Authorize Vault Export",
+            subtitle = "Authenticate to generate encrypted backup",
+            onSuccess = {
+                executeVaultExport()
+            },
+            onError = { _, msg ->
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     private fun executeVaultExport() {
@@ -1251,23 +1279,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val encryptCipher = KeystoreHelper.initEncryptCipher()
-            BiometricAuthHelper.promptBiometricWithCrypto(
-                activity = this,
-                title = "Authorize Vault Import",
-                subtitle = "Confirm fingerprint to import vault",
-                cipher = encryptCipher,
-                onSuccess = {
-                    launchVaultFilePicker()
-                },
-                onError = { _, msg ->
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                }
-            )
-        } catch (_: Exception) {
-            launchVaultFilePicker()
-        }
+        BiometricAuthHelper.promptGeneralUnlock(
+            activity = this,
+            title = "Authorize Vault Import",
+            subtitle = "Authenticate to import vault",
+            onSuccess = {
+                launchVaultFilePicker()
+            },
+            onError = { _, msg ->
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     private fun showImportTokenDialog(fileUri: Uri) {

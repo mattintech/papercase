@@ -118,6 +118,7 @@
                     android:orientation="horizontal">
 
                     <TextView
+                        android:id="@+id/tvSecurityPill"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:background="@drawable/bg_status_pill"
@@ -135,6 +136,7 @@
                         android:layout_weight="1" />
 
                     <TextView
+                        android:id="@+id/tvSecuritySubtitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Android Keystore"

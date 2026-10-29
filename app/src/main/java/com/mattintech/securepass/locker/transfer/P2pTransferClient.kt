@@ -2,11 +2,12 @@ package com.mattintech.securepass.locker.transfer
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.InetSocketAddress
+import java.net.Socket
 
 object P2pTransferClient {
 
@@ -18,31 +19,58 @@ object P2pTransferClient {
         onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit = { _, _ -> }
     ): File = withContext(Dispatchers.IO) {
         val cleanToken = token.trim().uppercase().replace(" ", "")
-        val url = URL("http://$host:$port/vault?token=$cleanToken")
 
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 10000 // 10s connection timeout
-            readTimeout = 30000    // 30s read timeout
-            doInput = true
-        }
+        val socket = Socket()
+        socket.soTimeout = 30000 // 30s read timeout
+        socket.connect(InetSocketAddress(host, port), 10000) // 10s connect timeout
 
-        try {
-            val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                val errorStream = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                throw IllegalStateException("Transfer rejected by sender (HTTP $responseCode: $errorStream)")
+        socket.use { s ->
+            val out = s.getOutputStream()
+            val request = "GET /vault?token=$cleanToken HTTP/1.1\r\nHost: $host:$port\r\nConnection: close\r\n\r\n"
+            out.write(request.toByteArray())
+            out.flush()
+
+            val inStream = BufferedInputStream(s.getInputStream())
+
+            // Read HTTP headers until \r\n\r\n
+            val headerBytes = ByteArrayOutputStream()
+            var prev1 = -1
+            var prev2 = -1
+            var prev3 = -1
+            var b: Int
+
+            while (inStream.read().also { b = it } != -1) {
+                headerBytes.write(b)
+                if (prev3 == '\r'.code && prev2 == '\n'.code && prev1 == '\r'.code && b == '\n'.code) {
+                    break
+                }
+                prev3 = prev2
+                prev2 = prev1
+                prev1 = b
             }
 
-            val totalBytes = connection.contentLengthLong
-            val inputStream: InputStream = connection.inputStream
+            val headerText = headerBytes.toString("UTF-8")
+            val statusLine = headerText.lines().firstOrNull() ?: ""
+            if (!statusLine.contains("200")) {
+                val errorBody = inStream.bufferedReader().use { it.readText() }
+                throw IllegalStateException("Transfer rejected by sender ($statusLine: $errorBody)")
+            }
 
+            // Extract Content-Length if present
+            var totalBytes = -1L
+            for (line in headerText.lines()) {
+                if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                    totalBytes = line.substringAfter(":").trim().toLongOrNull() ?: -1L
+                }
+            }
+
+            // Stream encrypted vault payload
             FileOutputStream(destinationFile).use { fileOut ->
                 val buffer = ByteArray(32 * 1024)
                 var bytesRead: Int
                 var downloaded = 0L
 
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                while (inStream.read(buffer).also { bytesRead = it } != -1) {
                     fileOut.write(buffer, 0, bytesRead)
                     downloaded += bytesRead
                     onProgress(downloaded, totalBytes)
@@ -55,8 +83,6 @@ object P2pTransferClient {
             }
 
             destinationFile
-        } finally {
-            connection.disconnect()
         }
     }
 }
