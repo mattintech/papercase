@@ -1290,16 +1290,21 @@ class MainActivity : AppCompatActivity() {
     // ==========================================
 
     private fun showConflictResolutionOrCommit(report: VaultConflictReport) {
-        if (report.totalIncoming == 0) {
-            Toast.makeText(this, "Incoming vault contains 0 documents.", Toast.LENGTH_SHORT).show()
+        if (!report.hasChanges) {
+            Toast.makeText(this, "Already up to date. Nothing to import.", Toast.LENGTH_SHORT).show()
             return
         }
+
+        val deletedTitles = report.deletedDocuments.take(4).joinToString("\n") { "   – ${it.title}" }
+        val deletedMore = if (report.deletedDocuments.size > 4) "\n   – ... and ${report.deletedDocuments.size - 4} more" else ""
+        val deletedLine = if (report.deletedDocuments.isEmpty()) "" else
+            "• ${report.deletedDocuments.size} Deleted on the other device (will be removed here)\n$deletedTitles$deletedMore\n"
 
         if (!report.hasConflicts) {
             // No conflicts! Direct import
             MaterialAlertDialogBuilder(this)
                 .setTitle("Import Vault")
-                .setMessage("Incoming vault contains:\n\n• ${report.newDocuments.size} New documents\n• ${report.identicalDocuments.size} Already up-to-date\n\nWould you like to import these documents?")
+                .setMessage("Incoming vault contains:\n\n• ${report.newDocuments.size} New documents\n$deletedLine• ${report.identicalDocuments.size} Already up-to-date\n\nApply these changes?")
                 .setPositiveButton("Import") { _, _ ->
                     commitVaultImport(report, ConflictResolutionStrategy.SMART_MERGE)
                 }
@@ -1318,6 +1323,7 @@ class MainActivity : AppCompatActivity() {
             "The incoming vault contains documents that already exist locally with different modification timestamps:\n\n" +
             "• ${report.newDocuments.size} New documents\n" +
             "• ${report.conflictingDocuments.size} Conflicting / modified documents\n" +
+            deletedLine +
             "• ${report.identicalDocuments.size} Identical documents\n\n" +
             "Conflicting Documents:\n$conflictDocTitles$moreText"
 

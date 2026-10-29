@@ -171,18 +171,15 @@ class DocumentViewerActivity : AppCompatActivity() {
     }
 
     private fun promptPasswordToView(doc: SecureDocument) {
-        val input = android.widget.EditText(this).apply {
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            hint = "Enter document password"
-        }
+        val input = DialogInput(this, hint = "Document password", password = true)
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Password Protected")
             .setMessage("This document is protected with a custom password. Enter it to view details:")
-            .setView(input)
+            .setView(input.view)
             .setCancelable(false)
             .setPositiveButton("Unlock") { _, _ ->
-                val password = input.text.toString()
+                val password = input.text
                 val salt = try {
                     Base64.getDecoder().decode(doc.passwordSaltBase64)
                 } catch (_: Exception) {

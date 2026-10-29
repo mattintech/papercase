@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import android.widget.ArrayAdapter
-import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -326,18 +325,15 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun promptPasswordToEdit(doc: SecureDocument) {
-        val input = EditText(this).apply {
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            hint = "Enter document password"
-        }
+        val input = DialogInput(this, hint = "Document password", password = true)
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Password Protected")
             .setMessage("This document is protected with a custom password. Enter it to edit:")
-            .setView(input)
+            .setView(input.view)
             .setCancelable(false)
             .setPositiveButton("Unlock") { _, _ ->
-                val password = input.text.toString()
+                val password = input.text
                 val salt = try {
                     Base64.getDecoder().decode(doc.passwordSaltBase64)
                 } catch (_: Exception) {
@@ -467,22 +463,20 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun showAddVisaDialog() {
-        val input = EditText(this).apply {
-            hint = "e.g. US Visa B1/B2, Schengen, Japan"
-            setText("Visa ${visaAttachments.size + 1}")
-            setSelectAllOnFocus(true)
-        }
+        val input = DialogInput(this, hint = "e.g. US Visa B1/B2, Schengen, Japan")
+        input.editText.setText("Visa ${visaAttachments.size + 1}")
+        input.editText.setSelectAllOnFocus(true)
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Passport Visa")
             .setMessage("Enter a label for this visa or travel permit:")
-            .setView(input)
+            .setView(input.view)
             .setPositiveButton("Camera") { _, _ ->
-                val title = input.text.toString().trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
+                val title = input.text.trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
                 captureFromCamera(AttachmentSlot.VISA, title)
             }
             .setNeutralButton("Gallery") { _, _ ->
-                val title = input.text.toString().trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
+                val title = input.text.trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
                 pickFromGallery(AttachmentSlot.VISA, title)
             }
             .setNegativeButton("Cancel", null)
@@ -504,16 +498,15 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun showRenameVisaDialog(item: AttachmentItem) {
-        val input = EditText(this).apply {
-            setText(item.customTitle.ifBlank { "Visa" })
-            setSelectAllOnFocus(true)
-        }
+        val input = DialogInput(this, hint = "Visa label")
+        input.editText.setText(item.customTitle.ifBlank { "Visa" })
+        input.editText.setSelectAllOnFocus(true)
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Rename Visa")
-            .setView(input)
+            .setView(input.view)
             .setPositiveButton("Save") { _, _ ->
-                val newTitle = input.text.toString().trim()
+                val newTitle = input.text.trim()
                 if (newTitle.isNotBlank()) {
                     item.customTitle = newTitle
                     renderAttachmentsUI()
