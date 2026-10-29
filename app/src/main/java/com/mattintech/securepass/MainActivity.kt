@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.mattintech.securepass.auth.SessionManager
 import com.mattintech.securepass.clipboard.ClipboardSecurityManager
 import com.mattintech.securepass.crypto.BiometricAuthHelper
 import com.mattintech.securepass.crypto.KeystoreHelper
@@ -81,10 +82,27 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         ClipboardSecurityManager.checkAndClearIfExpired(this)
         updateVaultStatusUI()
-        if (isLockerUnlocked && binding.layoutSecureLocker.visibility == View.VISIBLE) {
-            loadSecureLockerDocuments()
+
+        if (!SessionManager.isSessionValid(getSessionTimeoutMs())) {
+            isLockerUnlocked = false
+            if (binding.layoutSecureLocker.visibility == View.VISIBLE) {
+                showPassphraseVaultTab()
+                binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+            }
+        } else {
+            isLockerUnlocked = true
+            if (binding.layoutSecureLocker.visibility == View.VISIBLE) {
+                loadSecureLockerDocuments()
+            }
         }
     }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        SessionManager.keepAlive()
+    }
+
+    private fun getSessionTimeoutMs(): Long = prefs.lockerTimeoutMinutes * 60 * 1000L
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -192,6 +210,15 @@ class MainActivity : AppCompatActivity() {
             showAboutDialog()
         }
 
+        // Lock Locker Immediately Button
+        binding.btnLockLocker.setOnClickListener {
+            SessionManager.lock()
+            isLockerUnlocked = false
+            showPassphraseVaultTab()
+            binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+            Toast.makeText(this, "Secure Locker locked", Toast.LENGTH_SHORT).show()
+        }
+
         // Settings Switches
         binding.switchAutoCopy.setOnCheckedChangeListener { _, isChecked ->
             prefs.isAutoCopyEnabled = isChecked
@@ -276,10 +303,12 @@ class MainActivity : AppCompatActivity() {
         binding.nestedScrollView.visibility = View.VISIBLE
         binding.layoutSecureLocker.visibility = View.GONE
         binding.toolbar.title = getString(R.string.app_name)
+        binding.btnLockLocker.visibility = View.GONE
     }
 
     private fun checkAndShowLockerTab() {
-        if (isLockerUnlocked) {
+        if (isLockerUnlocked || SessionManager.isSessionValid(getSessionTimeoutMs())) {
+            isLockerUnlocked = true
             displayLockerTab()
             return
         }
@@ -287,6 +316,7 @@ class MainActivity : AppCompatActivity() {
         // Biometric challenge to unlock personal vault (OneDrive Personal Vault style)
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
         if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
+            SessionManager.markAuthenticated()
             isLockerUnlocked = true
             displayLockerTab()
             return
@@ -300,6 +330,7 @@ class MainActivity : AppCompatActivity() {
                 subtitle = "Confirm fingerprint to access your passport, license & documents",
                 cipher = encryptCipher,
                 onSuccess = {
+                    SessionManager.markAuthenticated()
                     isLockerUnlocked = true
                     displayLockerTab()
                 },
@@ -309,6 +340,7 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         } catch (e: Exception) {
+            SessionManager.markAuthenticated()
             isLockerUnlocked = true
             displayLockerTab()
         }
@@ -318,6 +350,7 @@ class MainActivity : AppCompatActivity() {
         binding.nestedScrollView.visibility = View.GONE
         binding.layoutSecureLocker.visibility = View.VISIBLE
         binding.toolbar.title = "Secure Locker"
+        binding.btnLockLocker.visibility = View.VISIBLE
         loadSecureLockerDocuments()
     }
 
@@ -406,6 +439,8 @@ class MainActivity : AppCompatActivity() {
                 cipher = decryptCipher,
                 onSuccess = { authenticatedCipher ->
                     try {
+                        SessionManager.markAuthenticated()
+                        isLockerUnlocked = true
                         val decryptedPassphrase =
                             KeystoreHelper.decryptWithCipher(authenticatedCipher, payload.ciphertext)
 
@@ -449,6 +484,8 @@ class MainActivity : AppCompatActivity() {
                 subtitle = getString(R.string.biometric_view_subtitle),
                 cipher = decryptCipher,
                 onSuccess = { authenticatedCipher ->
+                    SessionManager.markAuthenticated()
+                    isLockerUnlocked = true
                     val decryptedPassphrase =
                         KeystoreHelper.decryptWithCipher(authenticatedCipher, payload.ciphertext)
                     showDecryptedPassphraseDialog(decryptedPassphrase)
@@ -500,6 +537,8 @@ class MainActivity : AppCompatActivity() {
                 cipher = encryptCipher,
                 onSuccess = { authenticatedCipher ->
                     try {
+                        SessionManager.markAuthenticated()
+                        isLockerUnlocked = true
                         val payload = KeystoreHelper.encryptWithCipher(authenticatedCipher, passphrase)
                         prefs.saveEncryptedPassphrase(payload)
                         updateVaultStatusUI()

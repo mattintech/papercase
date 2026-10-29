@@ -19,7 +19,12 @@ class PreferencesManager(context: Context) {
         private const val KEY_AUTO_CLEAR = "auto_clear_clipboard"
         private const val KEY_CLEAR_TIMEOUT_SECONDS = "clear_timeout_seconds"
         private const val KEY_LAST_COPIED_TIME = "last_copied_time"
+        private const val KEY_LOCKER_TIMEOUT_MINUTES = "locker_timeout_minutes"
     }
+
+    var lockerTimeoutMinutes: Int
+        get() = prefs.getInt(KEY_LOCKER_TIMEOUT_MINUTES, 5)
+        set(value) = prefs.edit().putInt(KEY_LOCKER_TIMEOUT_MINUTES, value).apply()
 
     var isAutoCopyEnabled: Boolean
         get() = prefs.getBoolean(KEY_AUTO_COPY, true)
