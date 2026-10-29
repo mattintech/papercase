@@ -135,19 +135,35 @@ class AddDocumentActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             SessionManager.isExternalOperationActive = false
             SessionManager.keepAlive()
-            if (success && tempPhotoFile != null && tempPhotoFile!!.exists()) {
-                val bytes = tempPhotoFile!!.readBytes()
-                val fileName = "Photo_${System.currentTimeMillis()}.jpg"
-                val item = AttachmentItem.Pending(
-                    slot = activeCaptureSlot,
-                    customTitle = activeVisaTitle,
-                    fileName = fileName,
-                    mimeType = "image/jpeg",
-                    bytes = bytes
-                )
-                addAttachmentItem(item)
-                tempPhotoFile?.delete()
-                tempPhotoFile = null
+            val photoFile = tempPhotoFile
+            tempPhotoFile = null
+            if (photoFile == null) return@registerForActivityResult
+            if (!success || !photoFile.exists()) {
+                photoFile.delete()
+                return@registerForActivityResult
+            }
+            val slot = activeCaptureSlot
+            val title = activeVisaTitle
+            lifecycleScope.launch(Dispatchers.IO) {
+                // Strip GPS & other EXIF metadata; decoding a full-size photo is too slow for the main thread
+                val clean = try {
+                    ImageMetadataStripper.strip(
+                        photoFile.readBytes(), "image/jpeg", "Photo_${System.currentTimeMillis()}.jpg"
+                    )
+                } finally {
+                    photoFile.delete()
+                }
+                withContext(Dispatchers.Main) {
+                    addAttachmentItem(
+                        AttachmentItem.Pending(
+                            slot = slot,
+                            customTitle = title,
+                            fileName = clean.fileName,
+                            mimeType = clean.mimeType,
+                            bytes = clean.bytes
+                        )
+                    )
+                }
             }
         }
 
@@ -523,13 +539,15 @@ class AddDocumentActivity : AppCompatActivity() {
 
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes != null && bytes.isNotEmpty()) {
+                    // Strip GPS & other EXIF metadata from picked images (PDFs pass through unchanged)
+                    val clean = ImageMetadataStripper.strip(bytes, mimeType, fileName)
                     withContext(Dispatchers.Main) {
                         val item = AttachmentItem.Pending(
                             slot = activeCaptureSlot,
                             customTitle = activeVisaTitle,
-                            fileName = fileName,
-                            mimeType = mimeType,
-                            bytes = bytes
+                            fileName = clean.fileName,
+                            mimeType = clean.mimeType,
+                            bytes = clean.bytes
                         )
                         addAttachmentItem(item)
                     }
