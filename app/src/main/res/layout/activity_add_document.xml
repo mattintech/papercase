@@ -121,38 +121,37 @@
 
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- Document Number -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/tilNumber"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Document / ID Number"
-                app:startIconDrawable="@drawable/ic_badge">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etNumber"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:inputType="textCapCharacters" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- Expiration Date & Issuing Country Row -->
+            <!-- Document Number & Expiry Date Row -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
+                android:baselineAligned="false"
                 android:orientation="horizontal">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilNumber"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:hint="Doc / ID Number">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etNumber"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textCapCharacters" />
+
+                </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/tilExpiry"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginStart="8dp"
                     android:layout_weight="1"
                     android:hint="Expiration Date"
                     app:endIconDrawable="@drawable/ic_calendar"
@@ -162,29 +161,30 @@
                         android:id="@+id/etExpiry"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:clickable="true"
                         android:focusable="false"
                         android:inputType="none" />
 
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/tilCountry"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:hint="Issuing Country / State">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etCountry"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="textCapWords" />
-
-                </com.google.android.material.textfield.TextInputLayout>
-
             </LinearLayout>
+
+            <!-- Country of Issue -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilCountry"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:hint="Issuing Country / Authority">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etCountry"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapWords" />
+
+            </com.google.android.material.textfield.TextInputLayout>
 
             <!-- Secure Notes -->
             <com.google.android.material.textfield.TextInputLayout
@@ -201,14 +201,394 @@
                     android:layout_height="wrap_content"
                     android:gravity="top"
                     android:inputType="textMultiLine"
-                    android:lines="3" />
+                    android:lines="2" />
 
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- Attachments Card -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- SECTION HEADER: PHOTOS & PAGES -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Document Photos &amp; Pages"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textColor="?attr/colorPrimary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="12dp"
+                android:text="Store front and back sides, multiple visas, and extra pages"
+                android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <!-- FRONT & BACK PHOTO CARDS (Side-by-side or responsive) -->
+            <LinearLayout
+                android:id="@+id/layoutFrontBackContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <!-- FRONT CARD -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardFront"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/colorSurfaceVariant"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvFrontHeader"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/colorSurfaceVariant"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="8dp"
+                            android:text="Front Side"
+                            android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                            android:textColor="?attr/colorPrimary"
+                            android:textStyle="bold" />
+
+                        <!-- Front Empty State -->
+                        <LinearLayout
+                            android:id="@+id/layoutFrontEmpty"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="16dp">
+
+                            <ImageView
+                                android:layout_width="36dp"
+                                android:layout_height="36dp"
+                                android:src="@drawable/ic_camera"
+                                app:tint="?attr/colorOnSurfaceVariant" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:gravity="center"
+                                android:text="Front / Info Page"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp"
+                                android:orientation="horizontal">
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnCaptureFrontCamera"
+                                    style="@style/Widget.Material3.Button.TonalButton"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginEnd="4dp"
+                                    android:layout_weight="1"
+                                    android:paddingHorizontal="4dp"
+                                    android:text="Camera"
+                                    app:icon="@drawable/ic_camera"
+                                    app:iconSize="14dp" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnCaptureFrontGallery"
+                                    style="@style/Widget.Material3.Button.TonalButton"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="4dp"
+                                    android:layout_weight="1"
+                                    android:paddingHorizontal="4dp"
+                                    android:text="Gallery"
+                                    app:icon="@drawable/ic_image"
+                                    app:iconSize="14dp" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <!-- Front Filled State -->
+                        <LinearLayout
+                            android:id="@+id/layoutFrontFilled"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:visibility="gone"
+                            tools:visibility="visible">
+
+                            <ImageView
+                                android:id="@+id/ivFrontPreview"
+                                android:layout_width="match_parent"
+                                android:layout_height="110dp"
+                                android:background="?attr/colorSurfaceVariant"
+                                android:scaleType="centerCrop" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingHorizontal="8dp"
+                                android:paddingVertical="4dp">
+
+                                <TextView
+                                    android:id="@+id/tvFrontFileName"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="middle"
+                                    android:maxLines="1"
+                                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                                    tools:text="front.jpg" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnRemoveFront"
+                                    style="@style/Widget.Material3.Button.IconButton"
+                                    android:layout_width="32dp"
+                                    android:layout_height="32dp"
+                                    android:contentDescription="Remove"
+                                    app:icon="@drawable/ic_delete"
+                                    app:iconSize="16dp"
+                                    app:iconTint="?attr/colorError" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- BACK CARD -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardBack"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/colorSurfaceVariant"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvBackHeader"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/colorSurfaceVariant"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="8dp"
+                            android:text="Back Side"
+                            android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                            android:textColor="?attr/colorPrimary"
+                            android:textStyle="bold" />
+
+                        <!-- Back Empty State -->
+                        <LinearLayout
+                            android:id="@+id/layoutBackEmpty"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="16dp">
+
+                            <ImageView
+                                android:layout_width="36dp"
+                                android:layout_height="36dp"
+                                android:src="@drawable/ic_camera"
+                                app:tint="?attr/colorOnSurfaceVariant" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:gravity="center"
+                                android:text="Back Side / Barcode"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp"
+                                android:orientation="horizontal">
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnCaptureBackCamera"
+                                    style="@style/Widget.Material3.Button.TonalButton"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginEnd="4dp"
+                                    android:layout_weight="1"
+                                    android:paddingHorizontal="4dp"
+                                    android:text="Camera"
+                                    app:icon="@drawable/ic_camera"
+                                    app:iconSize="14dp" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnCaptureBackGallery"
+                                    style="@style/Widget.Material3.Button.TonalButton"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="4dp"
+                                    android:layout_weight="1"
+                                    android:paddingHorizontal="4dp"
+                                    android:text="Gallery"
+                                    app:icon="@drawable/ic_image"
+                                    app:iconSize="14dp" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <!-- Back Filled State -->
+                        <LinearLayout
+                            android:id="@+id/layoutBackFilled"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:visibility="gone"
+                            tools:visibility="visible">
+
+                            <ImageView
+                                android:id="@+id/ivBackPreview"
+                                android:layout_width="match_parent"
+                                android:layout_height="110dp"
+                                android:background="?attr/colorSurfaceVariant"
+                                android:scaleType="centerCrop" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingHorizontal="8dp"
+                                android:paddingVertical="4dp">
+
+                                <TextView
+                                    android:id="@+id/tvBackFileName"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="middle"
+                                    android:maxLines="1"
+                                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                                    tools:text="back.jpg" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnRemoveBack"
+                                    style="@style/Widget.Material3.Button.IconButton"
+                                    android:layout_width="32dp"
+                                    android:layout_height="32dp"
+                                    android:contentDescription="Remove"
+                                    app:icon="@drawable/ic_delete"
+                                    app:iconSize="16dp"
+                                    app:iconTint="?attr/colorError" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+            <!-- VISAS & TRAVEL STAMPS SECTION (Passport-focused, multi-visa support) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/layoutVisasSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:visibility="gone"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/colorSurfaceVariant"
+                app:strokeWidth="1dp"
+                tools:visibility="visible">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:src="@drawable/ic_visa"
+                            app:tint="?attr/colorPrimary" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:text="Visas &amp; Travel Stamps"
+                            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                            android:textColor="?attr/colorPrimary"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Add multiple visas (e.g. US, Schengen, Japan) or residence permits"
+                        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                    <!-- Added Visas Container -->
+                    <LinearLayout
+                        android:id="@+id/layoutVisasList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAddVisa"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="+ Add Visa Page (Camera / Gallery)"
+                        app:icon="@drawable/ic_visa"
+                        app:iconSize="18dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- OTHER FILES & PDFS SECTION -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/layoutOtherSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 android:layout_marginBottom="24dp"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
@@ -224,7 +604,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Attachments (Encrypted Photos &amp; PDFs)"
+                        android:text="Additional Files &amp; PDFs"
                         android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                         android:textColor="?attr/colorPrimary"
                         android:textStyle="bold" />
@@ -233,11 +613,17 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="Front and back of ID, passport scan, or PDF"
+                        android:text="Extra pages, renewal receipts, insurance documents, or PDF scans"
                         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                         android:textColor="?attr/colorOnSurfaceVariant" />
 
-                    <!-- Attachment Action Buttons -->
+                    <!-- Added Other Attachments Container -->
+                    <LinearLayout
+                        android:id="@+id/layoutOtherList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -245,46 +631,27 @@
                         android:orientation="horizontal">
 
                         <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnTakePhoto"
+                            android:id="@+id/btnAddOtherPhoto"
                             style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_marginEnd="6dp"
                             android:layout_weight="1"
-                            android:text="Camera"
+                            android:text="+ Photo"
                             app:icon="@drawable/ic_camera"
-                            app:iconSize="18dp" />
+                            app:iconSize="16dp" />
 
                         <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnPickImage"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
-                            android:layout_weight="1"
-                            android:text="Gallery"
-                            app:icon="@drawable/ic_image"
-                            app:iconSize="18dp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnPickPdf"
+                            android:id="@+id/btnAddOtherPdf"
                             style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="PDF"
+                            android:text="+ PDF / File"
                             app:icon="@drawable/ic_description"
-                            app:iconSize="18dp" />
+                            app:iconSize="16dp" />
 
                     </LinearLayout>
-
-                    <!-- Attachments List / Chips Container -->
-                    <LinearLayout
-                        android:id="@+id/layoutAttachmentsList"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:orientation="vertical" />
 
                 </LinearLayout>
 

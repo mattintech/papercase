@@ -6,9 +6,9 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,10 +16,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.datepicker.MaterialDatePicker
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.securepass.R
-import com.mattintech.securepass.crypto.BiometricAuthHelper
 import com.mattintech.securepass.databinding.ActivityAddDocumentBinding
 import com.mattintech.securepass.databinding.ItemAttachmentChipBinding
+import com.mattintech.securepass.locker.model.AttachmentSlot
 import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.DocumentType
 import com.mattintech.securepass.locker.model.SecureDocument
@@ -45,27 +46,60 @@ class AddDocumentActivity : AppCompatActivity() {
         }
     }
 
+    sealed class AttachmentItem {
+        abstract val slot: AttachmentSlot
+        abstract var customTitle: String
+        abstract val fileName: String
+        abstract val mimeType: String
+        abstract val sizeBytes: Long
+
+        data class Existing(
+            val docAttachment: DocumentAttachment,
+            override var customTitle: String = docAttachment.customTitle
+        ) : AttachmentItem() {
+            override val slot: AttachmentSlot get() = docAttachment.slot
+            override val fileName: String get() = docAttachment.fileName
+            override val mimeType: String get() = docAttachment.mimeType
+            override val sizeBytes: Long get() = docAttachment.sizeBytes
+        }
+
+        data class Pending(
+            override val slot: AttachmentSlot,
+            override var customTitle: String,
+            override val fileName: String,
+            override val mimeType: String,
+            val bytes: ByteArray
+        ) : AttachmentItem() {
+            override val sizeBytes: Long get() = bytes.size.toLong()
+        }
+    }
+
     private lateinit var binding: ActivityAddDocumentBinding
     private lateinit var repository: SecureLockerRepository
 
     private var editingDocumentId: String? = null
     private var existingDocument: SecureDocument? = null
 
-    // Pending attachments to be encrypted on save: Triple(fileName, mimeType, byteData)
-    private val pendingAttachments = mutableListOf<Triple<String, String, ByteArray>>()
-    // Retained existing attachments if editing
-    private val retainedAttachments = mutableListOf<DocumentAttachment>()
+    // Attachment Slots
+    private var frontAttachment: AttachmentItem? = null
+    private var backAttachment: AttachmentItem? = null
+    private val visaAttachments = mutableListOf<AttachmentItem>()
+    private val otherAttachments = mutableListOf<AttachmentItem>()
+
+    // Current capture routing
+    private var activeCaptureSlot: AttachmentSlot = AttachmentSlot.FRONT
+    private var activeVisaTitle: String = ""
 
     private var tempPhotoUri: Uri? = null
     private var tempPhotoFile: File? = null
 
-    // Photo picker launcher (Gallery)
+    // Gallery picker
     private val pickImageLauncher =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null) handleSelectedUri(uri)
         }
 
-    // PDF / File picker launcher
+    // PDF / generic file picker
     private val pickDocumentLauncher =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null) handleSelectedUri(uri)
@@ -77,8 +111,14 @@ class AddDocumentActivity : AppCompatActivity() {
             if (success && tempPhotoFile != null && tempPhotoFile!!.exists()) {
                 val bytes = tempPhotoFile!!.readBytes()
                 val fileName = "Photo_${System.currentTimeMillis()}.jpg"
-                pendingAttachments.add(Triple(fileName, "image/jpeg", bytes))
-                renderAttachmentsUI()
+                val item = AttachmentItem.Pending(
+                    slot = activeCaptureSlot,
+                    customTitle = activeVisaTitle,
+                    fileName = fileName,
+                    mimeType = "image/jpeg",
+                    bytes = bytes
+                )
+                addAttachmentItem(item)
                 tempPhotoFile?.delete()
                 tempPhotoFile = null
             }
@@ -103,6 +143,9 @@ class AddDocumentActivity : AppCompatActivity() {
 
         if (editingDocumentId != null) {
             loadExistingDocument(editingDocumentId!!)
+        } else {
+            updateDocumentTypeUI(getSelectedDocumentType())
+            renderAttachmentsUI()
         }
     }
 
@@ -115,37 +158,63 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        // Camera button
-        binding.btnTakePhoto.setOnClickListener {
-            try {
-                val cacheDir = File(cacheDir, "camera").apply { if (!exists()) mkdirs() }
-                tempPhotoFile = File(cacheDir, "temp_${System.currentTimeMillis()}.jpg")
-                tempPhotoUri = FileProvider.getUriForFile(
-                    this,
-                    "$packageName.fileprovider",
-                    tempPhotoFile!!
-                )
-                takePhotoLauncher.launch(tempPhotoUri!!)
-            } catch (e: Exception) {
-                Toast.makeText(this, "Could not open camera: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+        // Document Type Chip change
+        binding.chipGroupDocType.setOnCheckedStateChangeListener { _, _ ->
+            updateDocumentTypeUI(getSelectedDocumentType())
         }
 
-        // Gallery pick button
-        binding.btnPickImage.setOnClickListener {
-            pickImageLauncher.launch(
-                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-            )
+        // Front Card buttons
+        binding.btnCaptureFrontCamera.setOnClickListener {
+            captureFromCamera(AttachmentSlot.FRONT)
+        }
+        binding.btnCaptureFrontGallery.setOnClickListener {
+            pickFromGallery(AttachmentSlot.FRONT)
+        }
+        binding.btnRemoveFront.setOnClickListener {
+            frontAttachment = null
+            renderAttachmentsUI()
         }
 
-        // Document / PDF pick button
-        binding.btnPickPdf.setOnClickListener {
-            pickDocumentLauncher.launch("*/*")
+        // Back Card buttons
+        binding.btnCaptureBackCamera.setOnClickListener {
+            captureFromCamera(AttachmentSlot.BACK)
+        }
+        binding.btnCaptureBackGallery.setOnClickListener {
+            pickFromGallery(AttachmentSlot.BACK)
+        }
+        binding.btnRemoveBack.setOnClickListener {
+            backAttachment = null
+            renderAttachmentsUI()
+        }
+
+        // Visas: Add Visa Button
+        binding.btnAddVisa.setOnClickListener {
+            showAddVisaDialog()
+        }
+
+        // Other: Add Photo and PDF
+        binding.btnAddOtherPhoto.setOnClickListener {
+            showAddOtherPhotoDialog()
+        }
+        binding.btnAddOtherPdf.setOnClickListener {
+            pickPdf(AttachmentSlot.OTHER)
         }
 
         // Save Document button
         binding.btnSaveDocument.setOnClickListener {
             validateAndSave()
+        }
+    }
+
+    private fun updateDocumentTypeUI(type: DocumentType) {
+        if (type == DocumentType.PASSPORT) {
+            binding.tvFrontHeader.text = "Photo & Details Page"
+            binding.tvBackHeader.text = "Back Cover / Signature"
+            binding.layoutVisasSection.visibility = View.VISIBLE
+        } else {
+            binding.tvFrontHeader.text = "Front Side"
+            binding.tvBackHeader.text = "Back Side (Barcode)"
+            binding.layoutVisasSection.visibility = if (visaAttachments.isNotEmpty()) View.VISIBLE else View.GONE
         }
     }
 
@@ -169,8 +238,28 @@ class AddDocumentActivity : AppCompatActivity() {
                 DocumentType.OTHER -> binding.chipOther.isChecked = true
             }
 
-            retainedAttachments.clear()
-            retainedAttachments.addAll(doc.attachments)
+            frontAttachment = null
+            backAttachment = null
+            visaAttachments.clear()
+            otherAttachments.clear()
+
+            doc.attachments.forEach { att ->
+                val item = AttachmentItem.Existing(att)
+                when (att.slot) {
+                    AttachmentSlot.FRONT -> {
+                        if (frontAttachment == null) frontAttachment = item
+                        else otherAttachments.add(item)
+                    }
+                    AttachmentSlot.BACK -> {
+                        if (backAttachment == null) backAttachment = item
+                        else otherAttachments.add(item)
+                    }
+                    AttachmentSlot.VISA -> visaAttachments.add(item)
+                    AttachmentSlot.OTHER -> otherAttachments.add(item)
+                }
+            }
+
+            updateDocumentTypeUI(doc.type)
             renderAttachmentsUI()
         }
     }
@@ -187,6 +276,94 @@ class AddDocumentActivity : AppCompatActivity() {
         }
 
         picker.show(supportFragmentManager, "EXPIRY_PICKER")
+    }
+
+    private fun captureFromCamera(slot: AttachmentSlot, visaTitle: String = "") {
+        activeCaptureSlot = slot
+        activeVisaTitle = visaTitle
+        try {
+            val cacheDir = File(cacheDir, "camera").apply { if (!exists()) mkdirs() }
+            tempPhotoFile = File(cacheDir, "temp_${System.currentTimeMillis()}.jpg")
+            tempPhotoUri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                tempPhotoFile!!
+            )
+            takePhotoLauncher.launch(tempPhotoUri!!)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not open camera: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun pickFromGallery(slot: AttachmentSlot, visaTitle: String = "") {
+        activeCaptureSlot = slot
+        activeVisaTitle = visaTitle
+        pickImageLauncher.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        )
+    }
+
+    private fun pickPdf(slot: AttachmentSlot = AttachmentSlot.OTHER) {
+        activeCaptureSlot = slot
+        activeVisaTitle = ""
+        pickDocumentLauncher.launch("*/*")
+    }
+
+    private fun showAddVisaDialog() {
+        val input = EditText(this).apply {
+            hint = "e.g. US Visa B1/B2, Schengen, Japan"
+            setText("Visa ${visaAttachments.size + 1}")
+            setSelectAllOnFocus(true)
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Add Passport Visa")
+            .setMessage("Enter a label for this visa or travel permit:")
+            .setView(input)
+            .setPositiveButton("Camera") { _, _ ->
+                val title = input.text.toString().trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
+                captureFromCamera(AttachmentSlot.VISA, title)
+            }
+            .setNeutralButton("Gallery") { _, _ ->
+                val title = input.text.toString().trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
+                pickFromGallery(AttachmentSlot.VISA, title)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showAddOtherPhotoDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Add Additional Photo")
+            .setItems(arrayOf("Take Photo with Camera", "Choose from Gallery")) { _, which ->
+                if (which == 0) {
+                    captureFromCamera(AttachmentSlot.OTHER)
+                } else {
+                    pickFromGallery(AttachmentSlot.OTHER)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showRenameVisaDialog(item: AttachmentItem) {
+        val input = EditText(this).apply {
+            setText(item.customTitle.ifBlank { "Visa" })
+            setSelectAllOnFocus(true)
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Rename Visa")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val newTitle = input.text.toString().trim()
+                if (newTitle.isNotBlank()) {
+                    item.customTitle = newTitle
+                    renderAttachmentsUI()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun handleSelectedUri(uri: Uri) {
@@ -206,8 +383,14 @@ class AddDocumentActivity : AppCompatActivity() {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes != null && bytes.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
-                        pendingAttachments.add(Triple(fileName, mimeType, bytes))
-                        renderAttachmentsUI()
+                        val item = AttachmentItem.Pending(
+                            slot = activeCaptureSlot,
+                            customTitle = activeVisaTitle,
+                            fileName = fileName,
+                            mimeType = mimeType,
+                            bytes = bytes
+                        )
+                        addAttachmentItem(item)
                     }
                 }
             } catch (e: Exception) {
@@ -218,54 +401,128 @@ class AddDocumentActivity : AppCompatActivity() {
         }
     }
 
+    private fun addAttachmentItem(item: AttachmentItem) {
+        when (item.slot) {
+            AttachmentSlot.FRONT -> frontAttachment = item
+            AttachmentSlot.BACK -> backAttachment = item
+            AttachmentSlot.VISA -> visaAttachments.add(item)
+            AttachmentSlot.OTHER -> otherAttachments.add(item)
+        }
+        renderAttachmentsUI()
+    }
+
     private fun renderAttachmentsUI() {
-        binding.layoutAttachmentsList.removeAllViews()
-
-        // Render existing saved attachments
-        retainedAttachments.forEachIndexed { index, att ->
-            val itemBinding = ItemAttachmentChipBinding.inflate(layoutInflater, binding.layoutAttachmentsList, false)
-            itemBinding.tvFileName.text = att.fileName
-            itemBinding.tvFileSize.text = formatFileSize(att.sizeBytes)
-
-            if (att.mimeType.contains("pdf", ignoreCase = true)) {
-                itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_description)
-            } else {
-                itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_image)
-            }
-
-            itemBinding.btnRemoveAttachment.setOnClickListener {
-                retainedAttachments.removeAt(index)
-                renderAttachmentsUI()
-            }
-            binding.layoutAttachmentsList.addView(itemBinding.root)
+        // 1. Render Front Side
+        val front = frontAttachment
+        if (front == null) {
+            binding.layoutFrontEmpty.visibility = View.VISIBLE
+            binding.layoutFrontFilled.visibility = View.GONE
+        } else {
+            binding.layoutFrontEmpty.visibility = View.GONE
+            binding.layoutFrontFilled.visibility = View.VISIBLE
+            binding.tvFrontFileName.text = "${front.fileName} (${formatFileSize(front.sizeBytes)})"
+            displayThumbnail(front, binding.ivFrontPreview)
         }
 
-        // Render newly selected pending attachments
-        pendingAttachments.forEachIndexed { index, pending ->
-            val itemBinding = ItemAttachmentChipBinding.inflate(layoutInflater, binding.layoutAttachmentsList, false)
-            itemBinding.tvFileName.text = pending.first
-            itemBinding.tvFileSize.text = formatFileSize(pending.third.size.toLong())
+        // 2. Render Back Side
+        val back = backAttachment
+        if (back == null) {
+            binding.layoutBackEmpty.visibility = View.VISIBLE
+            binding.layoutBackFilled.visibility = View.GONE
+        } else {
+            binding.layoutBackEmpty.visibility = View.GONE
+            binding.layoutBackFilled.visibility = View.VISIBLE
+            binding.tvBackFileName.text = "${back.fileName} (${formatFileSize(back.sizeBytes)})"
+            displayThumbnail(back, binding.ivBackPreview)
+        }
 
-            if (pending.second.contains("image", ignoreCase = true)) {
-                try {
-                    val bitmap = BitmapFactory.decodeByteArray(pending.third, 0, pending.third.size)
-                    if (bitmap != null) {
-                        itemBinding.ivAttachmentPreview.setImageBitmap(bitmap)
-                    } else {
-                        itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_image)
-                    }
-                } catch (e: Exception) {
-                    itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_image)
-                }
-            } else {
-                itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_description)
+        // 3. Render Visas List
+        binding.layoutVisasList.removeAllViews()
+        visaAttachments.forEachIndexed { index, visa ->
+            val itemBinding = ItemAttachmentChipBinding.inflate(layoutInflater, binding.layoutVisasList, false)
+            itemBinding.tvAttachmentSlotBadge.text = "VISA ${index + 1}"
+            itemBinding.tvFileName.text = visa.customTitle.ifBlank { "Visa ${index + 1}" }
+            itemBinding.tvFileSize.text = "${formatFileSize(visa.sizeBytes)} • ${visa.fileName}"
+
+            displayThumbnail(visa, itemBinding.ivAttachmentPreview)
+
+            itemBinding.btnEditLabel.visibility = View.VISIBLE
+            itemBinding.btnEditLabel.setOnClickListener {
+                showRenameVisaDialog(visa)
             }
 
             itemBinding.btnRemoveAttachment.setOnClickListener {
-                pendingAttachments.removeAt(index)
+                visaAttachments.removeAt(index)
                 renderAttachmentsUI()
             }
-            binding.layoutAttachmentsList.addView(itemBinding.root)
+            binding.layoutVisasList.addView(itemBinding.root)
+        }
+
+        // 4. Render Other Attachments List
+        binding.layoutOtherList.removeAllViews()
+        otherAttachments.forEachIndexed { index, other ->
+            val itemBinding = ItemAttachmentChipBinding.inflate(layoutInflater, binding.layoutOtherList, false)
+            val isPdf = other.mimeType.contains("pdf", ignoreCase = true) || other.fileName.endsWith(".pdf", ignoreCase = true)
+            itemBinding.tvAttachmentSlotBadge.text = if (isPdf) "PDF" else "EXTRA"
+            itemBinding.tvFileName.text = other.fileName
+            itemBinding.tvFileSize.text = formatFileSize(other.sizeBytes)
+
+            if (isPdf) {
+                itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_description)
+            } else {
+                displayThumbnail(other, itemBinding.ivAttachmentPreview)
+            }
+
+            itemBinding.btnEditLabel.visibility = View.GONE
+            itemBinding.btnRemoveAttachment.setOnClickListener {
+                otherAttachments.removeAt(index)
+                renderAttachmentsUI()
+            }
+            binding.layoutOtherList.addView(itemBinding.root)
+        }
+    }
+
+    private fun displayThumbnail(item: AttachmentItem, imageView: android.widget.ImageView) {
+        when (item) {
+            is AttachmentItem.Pending -> {
+                if (item.mimeType.contains("image", ignoreCase = true) ||
+                    item.fileName.endsWith(".jpg", ignoreCase = true) ||
+                    item.fileName.endsWith(".png", ignoreCase = true)
+                ) {
+                    try {
+                        val bitmap = BitmapFactory.decodeByteArray(item.bytes, 0, item.bytes.size)
+                        if (bitmap != null) {
+                            imageView.setImageBitmap(bitmap)
+                        } else {
+                            imageView.setImageResource(R.drawable.ic_image)
+                        }
+                    } catch (e: Exception) {
+                        imageView.setImageResource(R.drawable.ic_image)
+                    }
+                } else {
+                    imageView.setImageResource(R.drawable.ic_description)
+                }
+            }
+            is AttachmentItem.Existing -> {
+                // Decrypt async
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val bytes = repository.readAttachmentBytes(item.docAttachment)
+                        if (bytes.isNotEmpty()) {
+                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            withContext(Dispatchers.Main) {
+                                if (bitmap != null) {
+                                    imageView.setImageBitmap(bitmap)
+                                } else {
+                                    imageView.setImageResource(R.drawable.ic_image)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
         }
     }
 
@@ -306,16 +563,35 @@ class AddDocumentActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val finalAttachments = retainedAttachments.toMutableList()
+                val finalAttachments = mutableListOf<DocumentAttachment>()
 
-                // Encrypt and persist each pending attachment
-                pendingAttachments.forEach { pending ->
-                    val savedAttachment = repository.saveAttachmentBytes(
-                        fileName = pending.first,
-                        mimeType = pending.second,
-                        data = pending.third
-                    )
-                    finalAttachments.add(savedAttachment)
+                val allItems = mutableListOf<AttachmentItem>()
+                frontAttachment?.let { allItems.add(it) }
+                backAttachment?.let { allItems.add(it) }
+                allItems.addAll(visaAttachments)
+                allItems.addAll(otherAttachments)
+
+                allItems.forEach { item ->
+                    when (item) {
+                        is AttachmentItem.Existing -> {
+                            finalAttachments.add(
+                                item.docAttachment.copy(
+                                    slot = item.slot,
+                                    customTitle = item.customTitle
+                                )
+                            )
+                        }
+                        is AttachmentItem.Pending -> {
+                            val saved = repository.saveAttachmentBytes(
+                                fileName = item.fileName,
+                                mimeType = item.mimeType,
+                                data = item.bytes,
+                                slot = item.slot,
+                                customTitle = item.customTitle
+                            )
+                            finalAttachments.add(saved)
+                        }
+                    }
                 }
 
                 val docToSave = existingDocument?.copy(
@@ -339,7 +615,7 @@ class AddDocumentActivity : AppCompatActivity() {
 
                 val success = repository.saveDocument(docToSave)
                 if (success) {
-                    Toast.makeText(this@AddDocumentActivity, "Document encrypted & saved!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AddDocumentActivity, "Document & photos securely saved!", Toast.LENGTH_SHORT).show()
                     setResult(Activity.RESULT_OK)
                     finish()
                 } else {

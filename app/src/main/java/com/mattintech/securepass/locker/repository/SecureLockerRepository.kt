@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Base64
 import androidx.core.content.FileProvider
 import com.mattintech.securepass.locker.crypto.LockerKeystoreHelper
+import com.mattintech.securepass.locker.model.AttachmentSlot
 import com.mattintech.securepass.locker.model.DocumentAttachment
 import com.mattintech.securepass.locker.model.SecureDocument
 import kotlinx.coroutines.Dispatchers
@@ -104,7 +105,9 @@ class SecureLockerRepository(private val context: Context) {
     suspend fun saveAttachmentBytes(
         fileName: String,
         mimeType: String,
-        data: ByteArray
+        data: ByteArray,
+        slot: AttachmentSlot = AttachmentSlot.FRONT,
+        customTitle: String = ""
     ): DocumentAttachment = withContext(Dispatchers.IO) {
         val (cipherBytes, ivBytes) = LockerKeystoreHelper.encryptBytes(data)
         val encryptedFileName = "${UUID.randomUUID()}.bin"
@@ -117,7 +120,9 @@ class SecureLockerRepository(private val context: Context) {
             mimeType = mimeType,
             encryptedFileName = encryptedFileName,
             ivBase64 = ivBase64,
-            sizeBytes = data.size.toLong()
+            sizeBytes = data.size.toLong(),
+            slot = slot,
+            customTitle = customTitle
         )
     }
 

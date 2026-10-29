@@ -26,15 +26,45 @@
             android:paddingVertical="10dp">
 
             <TextView
-                android:id="@+id/tvAttachmentTitle"
+                android:id="@+id/tvAttachmentSlotBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/colorPrimaryContainer"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                android:textColor="?attr/colorOnPrimaryContainer"
+                android:textStyle="bold"
+                tools:text="FRONT" />
+
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
                 android:layout_weight="1"
-                android:ellipsize="middle"
-                android:maxLines="1"
-                android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
-                android:textStyle="bold"
-                tools:text="Driver_License_Front.jpg" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvAttachmentTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                    android:textStyle="bold"
+                    tools:text="Front Side (Photo &amp; Details)" />
+
+                <TextView
+                    android:id="@+id/tvAttachmentSub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="photo.jpg • 1.2 MB • Tap to enlarge" />
+
+            </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnShareAttachment"
@@ -47,15 +77,29 @@
 
         </LinearLayout>
 
-        <!-- Image / Document Preview -->
-        <ImageView
-            android:id="@+id/ivAttachmentImage"
+        <!-- Image / Document Preview Frame -->
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:adjustViewBounds="true"
-            android:maxHeight="500dp"
-            android:minHeight="150dp"
-            android:scaleType="fitCenter" />
+            android:background="?attr/colorSurface">
+
+            <ImageView
+                android:id="@+id/ivAttachmentImage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:maxHeight="500dp"
+                android:minHeight="180dp"
+                android:scaleType="fitCenter" />
+
+            <ProgressBar
+                android:id="@+id/progressDecrypt"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center"
+                android:visibility="visible" />
+
+        </FrameLayout>
 
     </LinearLayout>
 

@@ -20,14 +20,39 @@ enum class DocumentType(val displayName: String, val iconRes: Int) {
     }
 }
 
+enum class AttachmentSlot(val displayName: String) {
+    FRONT("Front"),
+    BACK("Back"),
+    VISA("Visa"),
+    OTHER("Other");
+
+    companion object {
+        fun fromString(name: String): AttachmentSlot {
+            return entries.find { it.name.equals(name, ignoreCase = true) } ?: OTHER
+        }
+    }
+}
+
 data class DocumentAttachment(
     val id: String = UUID.randomUUID().toString(),
     val fileName: String,
     val mimeType: String,
     val encryptedFileName: String,
     val ivBase64: String,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val slot: AttachmentSlot = AttachmentSlot.FRONT,
+    val customTitle: String = ""
 ) {
+    fun getDisplayTitle(): String {
+        if (customTitle.isNotBlank()) return customTitle
+        return when (slot) {
+            AttachmentSlot.FRONT -> "Front Side"
+            AttachmentSlot.BACK -> "Back Side"
+            AttachmentSlot.VISA -> "Visa"
+            AttachmentSlot.OTHER -> fileName
+        }
+    }
+
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("id", id)
@@ -36,18 +61,29 @@ data class DocumentAttachment(
             put("encryptedFileName", encryptedFileName)
             put("ivBase64", ivBase64)
             put("sizeBytes", sizeBytes)
+            put("slot", slot.name)
+            put("customTitle", customTitle)
         }
     }
 
     companion object {
         fun fromJson(json: JSONObject): DocumentAttachment {
+            val slotString = json.optString("slot", "")
+            val slot = if (slotString.isNotBlank()) {
+                AttachmentSlot.fromString(slotString)
+            } else {
+                AttachmentSlot.FRONT
+            }
+
             return DocumentAttachment(
                 id = json.optString("id", UUID.randomUUID().toString()),
                 fileName = json.optString("fileName", "attachment"),
                 mimeType = json.optString("mimeType", "application/octet-stream"),
                 encryptedFileName = json.optString("encryptedFileName", ""),
                 ivBase64 = json.optString("ivBase64", ""),
-                sizeBytes = json.optLong("sizeBytes", 0L)
+                sizeBytes = json.optLong("sizeBytes", 0L),
+                slot = slot,
+                customTitle = json.optString("customTitle", "")
             )
         }
     }
@@ -65,6 +101,44 @@ data class SecureDocument(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
+    fun getFrontAttachment(): DocumentAttachment? =
+        attachments.firstOrNull { it.slot == AttachmentSlot.FRONT }
+
+    fun getBackAttachment(): DocumentAttachment? =
+        attachments.firstOrNull { it.slot == AttachmentSlot.BACK }
+
+    fun getVisaAttachments(): List<DocumentAttachment> =
+        attachments.filter { it.slot == AttachmentSlot.VISA }
+
+    fun getOtherAttachments(): List<DocumentAttachment> =
+        attachments.filter { it.slot == AttachmentSlot.OTHER }
+
+    fun getSummaryText(): String {
+        val parts = mutableListOf<String>()
+        val hasFront = getFrontAttachment() != null
+        val hasBack = getBackAttachment() != null
+        val visaCount = getVisaAttachments().size
+        val otherCount = getOtherAttachments().size
+
+        if (hasFront && hasBack) {
+            parts.add("Front & Back")
+        } else if (hasFront) {
+            parts.add("Front")
+        } else if (hasBack) {
+            parts.add("Back")
+        }
+
+        if (visaCount > 0) {
+            parts.add("$visaCount ${if (visaCount == 1) "Visa" else "Visas"}")
+        }
+
+        if (otherCount > 0) {
+            parts.add("$otherCount ${if (otherCount == 1) "File" else "Files"}")
+        }
+
+        return if (parts.isNotEmpty()) parts.joinToString(" • ") else ""
+    }
+
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("id", id)

@@ -170,7 +170,10 @@ class DocumentViewerActivity : AppCompatActivity() {
                 binding.layoutDecryptedAttachments,
                 false
             )
-            itemBinding.tvAttachmentTitle.text = attachment.fileName
+            itemBinding.tvAttachmentSlotBadge.text = attachment.slot.name
+            itemBinding.tvAttachmentTitle.text = attachment.getDisplayTitle()
+            itemBinding.tvAttachmentSub.text = "${attachment.fileName} • ${formatFileSize(attachment.sizeBytes)} • Tap to enlarge"
+            itemBinding.progressDecrypt.visibility = View.VISIBLE
 
             itemBinding.btnShareAttachment.setOnClickListener {
                 promptBiometricForSingleAttachmentShare(attachment)
@@ -182,7 +185,12 @@ class DocumentViewerActivity : AppCompatActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val decryptedBytes = repository.readAttachmentBytes(attachment)
-                    if (decryptedBytes.isEmpty()) return@launch
+                    if (decryptedBytes.isEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            itemBinding.progressDecrypt.visibility = View.GONE
+                        }
+                        return@launch
+                    }
 
                     val isPdf = attachment.mimeType.contains("pdf", ignoreCase = true) ||
                             attachment.fileName.endsWith(".pdf", ignoreCase = true)
@@ -192,15 +200,45 @@ class DocumentViewerActivity : AppCompatActivity() {
                     } else {
                         val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                         withContext(Dispatchers.Main) {
+                            itemBinding.progressDecrypt.visibility = View.GONE
                             if (bitmap != null) {
                                 itemBinding.ivAttachmentImage.setImageBitmap(bitmap)
+                                itemBinding.ivAttachmentImage.setOnClickListener {
+                                    showFullScreenImage(bitmap, attachment.getDisplayTitle())
+                                }
                             }
                         }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                    withContext(Dispatchers.Main) {
+                        itemBinding.progressDecrypt.visibility = View.GONE
+                    }
                 }
             }
+        }
+    }
+
+    private fun showFullScreenImage(bitmap: Bitmap, title: String) {
+        val imageView = android.widget.ImageView(this).apply {
+            setImageBitmap(bitmap)
+            adjustViewBounds = true
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setPadding(16, 16, 16, 16)
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setView(imageView)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes >= 1024 * 1024 -> String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
+            bytes >= 1024 -> String.format(java.util.Locale.getDefault(), "%.1f KB", bytes / 1024.0)
+            else -> "$bytes B"
         }
     }
 
