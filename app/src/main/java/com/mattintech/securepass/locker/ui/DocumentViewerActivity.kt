@@ -144,7 +144,14 @@ class DocumentViewerActivity : AppCompatActivity() {
 
     private fun loadDocument(id: String) {
         lifecycleScope.launch {
-            val doc = repository.getDocumentById(id)
+            val doc = try {
+                repository.getDocumentById(id)
+            } catch (e: Exception) {
+                // Locker key needs a fresh unlock (or was lost): go back to the locker screen
+                Toast.makeText(this@DocumentViewerActivity, "Secure Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
             if (doc == null) {
                 finish()
                 return@launch
@@ -284,7 +291,7 @@ class DocumentViewerActivity : AppCompatActivity() {
                     if (isPdf) {
                         renderPdfPages(decryptedBytes, itemBinding)
                     } else {
-                        val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                        val bitmap = OrientedBitmap.decode(decryptedBytes)
                         withContext(Dispatchers.Main) {
                             itemBinding.progressDecrypt.visibility = View.GONE
                             if (bitmap != null) {

@@ -14,19 +14,19 @@ object P2pTransferClient {
     suspend fun downloadVault(
         host: String,
         port: Int,
-        token: String,
+        sessionId: String,
+        deviceName: String,
         destinationFile: File,
         onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit = { _, _ -> }
     ): File = withContext(Dispatchers.IO) {
-        val cleanToken = token.trim().uppercase().replace(" ", "")
-
         val socket = Socket()
-        socket.soTimeout = 30000 // 30s read timeout
+        socket.soTimeout = 120000 // the sender has to approve and authenticate before data flows
         socket.connect(InetSocketAddress(host, port), 10000) // 10s connect timeout
 
         socket.use { s ->
             val out = s.getOutputStream()
-            val request = "GET /vault?token=$cleanToken HTTP/1.1\r\nHost: $host:$port\r\nConnection: close\r\n\r\n"
+            val request = "GET /vault?sid=$sessionId HTTP/1.1\r\nHost: $host:$port\r\n" +
+                "$DEVICE_NAME_HEADER: ${deviceName.replace(Regex("[\\r\\n]"), " ")}\r\nConnection: close\r\n\r\n"
             out.write(request.toByteArray())
             out.flush()
 

@@ -20,6 +20,13 @@ object SessionManager {
     /** Background inactivity timeout: 30 seconds */
     const val BACKGROUND_INACTIVITY_TIMEOUT_MS = 30 * 1000L
 
+    /**
+     * Hard cap since the last real biometric / PIN unlock, regardless of activity. Kept just under the
+     * auth-bound locker key's validity (LockerKeystoreHelper.AUTH_VALIDITY_SECONDS) so the app asks
+     * again before the key starts refusing to decrypt.
+     */
+    const val MAX_AUTH_AGE_MS = 9 * 60 * 1000L
+
     const val NOTIFICATION_CHANNEL_ID = "locker_security_channel"
     const val NOTIFICATION_ID = 9002
 
@@ -32,6 +39,9 @@ object SessionManager {
     }
 
     private var lastAuthTime: Long = 0L
+
+    /** Time of the last real authentication; unlike [lastAuthTime] it isn't extended by keepAlive(). */
+    private var lastStrongAuthTime: Long = 0L
 
     var isLockerUnlocked: Boolean
         get() = isSessionValid()
@@ -70,6 +80,7 @@ object SessionManager {
      */
     fun markAuthenticated() {
         lastAuthTime = timeProvider()
+        lastStrongAuthTime = lastAuthTime
         cancelBackgroundTimer()
     }
 
@@ -78,7 +89,9 @@ object SessionManager {
      */
     fun isSessionValid(timeoutMs: Long = DEFAULT_TIMEOUT_MS): Boolean {
         if (lastAuthTime == 0L) return false
-        val elapsed = timeProvider() - lastAuthTime
+        val now = timeProvider()
+        if (now - lastStrongAuthTime !in 0..MAX_AUTH_AGE_MS) return false
+        val elapsed = now - lastAuthTime
         return elapsed in 0..timeoutMs
     }
 
@@ -96,6 +109,7 @@ object SessionManager {
      */
     fun lock() {
         lastAuthTime = 0L
+        lastStrongAuthTime = 0L
         cancelBackgroundTimer()
     }
 
@@ -197,6 +211,7 @@ object SessionManager {
 
     internal fun setAuthTimeForTesting(time: Long) {
         lastAuthTime = time
+        lastStrongAuthTime = time
     }
 
     internal fun setForegroundForTesting(foreground: Boolean) {

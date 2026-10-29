@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import kotlin.coroutines.resume
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.provider.Settings
@@ -46,7 +47,10 @@ import com.mattintech.securepass.locker.model.DocumentType
 import com.mattintech.securepass.locker.model.SecureDocument
 import com.mattintech.securepass.locker.repository.SecureLockerRepository
 import com.mattintech.securepass.locker.transfer.ConflictResolutionStrategy
+import com.mattintech.securepass.locker.crypto.LockerKeyInvalidatedException
+import com.mattintech.securepass.locker.crypto.LockerLockedException
 import com.mattintech.securepass.locker.transfer.P2pNetworkHelper
+import com.mattintech.securepass.locker.transfer.P2pSessionKeys
 import com.mattintech.securepass.locker.transfer.P2pTransferClient
 import com.mattintech.securepass.locker.transfer.P2pTransferServer
 import com.mattintech.securepass.locker.transfer.QrCodeHelper
@@ -58,6 +62,7 @@ import com.mattintech.securepass.locker.ui.SecureDocumentsAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -199,18 +204,15 @@ class MainActivity : AppCompatActivity() {
         // 1. Check Deep Link (e.g. from Samsung Camera, Google Lens, or browser)
         val uri = currentIntent.data
         if (currentIntent.action == Intent.ACTION_VIEW && uri != null) {
-            val scheme = uri.scheme
-            val host = uri.host
-            if (scheme.equals("securepass", ignoreCase = true) ||
-                (scheme.equals("https", ignoreCase = true) && host.equals("securepass.app", ignoreCase = true))) {
-                val ip = uri.getQueryParameter("ip")
-                val port = uri.getQueryParameter("port")?.toIntOrNull()
-                val token = uri.getQueryParameter("token")
-                if (!ip.isNullOrBlank() && port != null && !token.isNullOrBlank()) {
-                    intent = null // Clear so configuration change won't re-trigger
-                    promptToReceiveDeepLink(ip, port, token)
-                    return
+            if (uri.scheme.equals("securepass", ignoreCase = true)) {
+                intent = null // Clear so configuration change won't re-trigger
+                val target = parseP2pTarget(uri)
+                if (target != null) {
+                    confirmReceiveFromLink(target)
+                } else {
+                    showUnsupportedTransferCodeDialog()
                 }
+                return
             }
         }
 
@@ -226,23 +228,56 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun promptToReceiveDeepLink(ip: String, port: Int, token: String) {
-        val status = BiometricAuthHelper.checkBiometricAvailability(this)
-        if (status is BiometricAuthHelper.BiometricStatus.Ready) {
-            BiometricAuthHelper.promptGeneralUnlock(
-                activity = this,
-                title = "Authorize Vault Receive",
-                subtitle = "Authenticate to receive vault from $ip",
-                onSuccess = {
-                    startP2pReceiverFlow(ip, port, token)
-                },
-                onError = { _, msg ->
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private data class P2pTarget(val ip: String, val port: Int, val transferKey: ByteArray)
+
+    /** Parses a v2 transfer code: securepass://p2p?v=2&ip=...&port=...&key=... */
+    private fun parseP2pTarget(uri: Uri): P2pTarget? {
+        if (!uri.scheme.equals("securepass", ignoreCase = true) || uri.host != "p2p") return null
+        if (uri.getQueryParameter("v") != "2") return null
+        val ip = uri.getQueryParameter("ip")?.takeIf { it.isNotBlank() } ?: return null
+        val port = uri.getQueryParameter("port")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+        val key = uri.getQueryParameter("key")?.let { QrCodeHelper.decodeTransferKey(it) } ?: return null
+        return P2pTarget(ip, port, key)
+    }
+
+    private fun showUnsupportedTransferCodeDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Can't use this code")
+            .setMessage("This transfer code isn't supported. Make sure SecurePass is up to date on both devices, then start a new transfer.")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    /** Receiving is only allowed on devices with a screen lock, so the imported vault is never left open. */
+    private fun ensureDeviceProtectedForReceive(): Boolean {
+        if (BiometricAuthHelper.getDeviceSecurityLevel(this).isProtected) return true
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Screen lock required")
+            .setMessage("This device has no PIN, pattern, password, or fingerprint. Set up a screen lock before receiving documents, so they can't be opened by anyone who picks up the device.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                try {
+                    startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                } catch (_: Exception) {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
                 }
-            )
-        } else {
-            startP2pReceiverFlow(ip, port, token)
-        }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+        return false
+    }
+
+    /**
+     * A link can come from any app or web page, so it never starts a transfer by itself: the user
+     * confirms, the sender approves, and the receiver authenticates before anything is imported.
+     */
+    private fun confirmReceiveFromLink(target: P2pTarget) {
+        if (!ensureDeviceProtectedForReceive()) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Receive documents?")
+            .setMessage("Receive a vault from the device at ${target.ip}.\n\nOnly continue if you just scanned the QR code on your own device.")
+            .setPositiveButton("Continue") { _, _ -> startP2pReceiverFlow(target) }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun checkNotificationPermission() {
@@ -546,13 +581,108 @@ class MainActivity : AppCompatActivity() {
         binding.tvToolbarTitle.text = "Secure Locker"
         binding.btnLockLocker.visibility = View.VISIBLE
         binding.btnVaultTransfer.visibility = View.VISIBLE
-        loadSecureLockerDocuments()
+        migrateLockerKeyIfNeeded()
+    }
+
+    /** Moves the locker onto the auth-bound key the first time it's opened on a device with a screen lock. */
+    private fun migrateLockerKeyIfNeeded() {
+        lifecycleScope.launch {
+            val migrated = try {
+                lockerRepository.migrateToAuthBoundKey()
+            } catch (e: LockerLockedException) {
+                handleLockerLocked()
+                return@launch
+            } catch (e: LockerKeyInvalidatedException) {
+                showLockerKeyLostDialog()
+                return@launch
+            } catch (e: Exception) {
+                // Keep using the existing key; retried on the next unlock
+                e.printStackTrace()
+                false
+            }
+            loadSecureLockerDocuments()
+            if (migrated) showLockerHardwareBoundDialog()
+        }
+    }
+
+    private fun showLockerHardwareBoundDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Locker upgraded")
+            .setMessage(
+                "Your documents can now only be decrypted after you unlock with your fingerprint or PIN.\n\n" +
+                "Important: if you ever remove this device's screen lock, Android permanently deletes the locker key " +
+                "and your documents can't be recovered. Keep an exported backup somewhere safe."
+            )
+            .setPositiveButton("Export Backup") { _, _ -> promptBiometricForExport() }
+            .setNegativeButton("OK", null)
+            .show()
+    }
+
+    private fun handleLockerLocked() {
+        isLockerUnlocked = false
+        showPassphraseVaultTab()
+        binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+        Toast.makeText(this, "Secure Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showLockerKeyLostDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Locker can't be opened")
+            .setMessage(
+                "Android deleted the Secure Locker key, usually because the screen lock was removed or reset. " +
+                "The stored documents can't be decrypted any more.\n\n" +
+                "Reset the locker to start fresh, then import a backup if you have one."
+            )
+            .setCancelable(false)
+            .setPositiveButton("Reset Locker") { _, _ ->
+                lifecycleScope.launch {
+                    lockerRepository.resetAfterKeyLoss()
+                    loadSecureLockerDocuments()
+                }
+            }
+            .setNegativeButton("Not Now") { _, _ ->
+                showPassphraseVaultTab()
+                binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+            }
+            .show()
     }
 
     private fun loadSecureLockerDocuments() {
         lifecycleScope.launch {
-            allDocuments = lockerRepository.getAllDocuments()
+            allDocuments = try {
+                lockerRepository.getAllDocuments()
+            } catch (e: LockerLockedException) {
+                handleLockerLocked()
+                return@launch
+            } catch (e: LockerKeyInvalidatedException) {
+                showLockerKeyLostDialog()
+                return@launch
+            }
             filterDocuments(null)
+        }
+    }
+
+    /** Ensures the locker key is usable, prompting for fingerprint / PIN if the session has expired. */
+    private suspend fun awaitLockerUnlock(subtitle: String): Boolean {
+        if (SessionManager.isSessionValid(getSessionTimeoutMs())) return true
+        if (!BiometricAuthHelper.getDeviceSecurityLevel(this).isProtected) {
+            SessionManager.markAuthenticated()
+            return true
+        }
+        return suspendCancellableCoroutine { cont ->
+            BiometricAuthHelper.promptGeneralUnlock(
+                activity = this,
+                title = "Unlock Secure Locker",
+                subtitle = subtitle,
+                onSuccess = {
+                    SessionManager.markAuthenticated()
+                    if (cont.isActive) cont.resume(true)
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    if (cont.isActive) cont.resume(false)
+                }
+            )
         }
     }
 
@@ -913,34 +1043,48 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        promptBiometricForP2pSend(ip)
+        executeP2pSend(ip)
     }
 
-    private fun promptBiometricForP2pSend(localIp: String) {
-        val status = BiometricAuthHelper.checkBiometricAvailability(this)
-        if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
-            executeP2pSend(localIp)
-            return
+    /** Asks the sender to approve a connected receiver, then authenticate (fingerprint or PIN). */
+    private suspend fun approveP2pReceiver(receiverName: String, receiverAddress: String): Boolean {
+        val approved = suspendCancellableCoroutine { cont ->
+            val dialog = MaterialAlertDialogBuilder(this)
+                .setTitle("Send your vault?")
+                .setMessage("$receiverName ($receiverAddress) wants to receive your Secure Locker.\n\nOnly allow this if it's your device.")
+                .setCancelable(false)
+                .setPositiveButton("Allow") { _, _ -> if (cont.isActive) cont.resume(true) }
+                .setNegativeButton("Deny") { _, _ -> if (cont.isActive) cont.resume(false) }
+                .show()
+            cont.invokeOnCancellation { dialog.dismiss() }
         }
+        if (!approved) return false
+        if (!BiometricAuthHelper.getDeviceSecurityLevel(this).isProtected) return true
 
-        BiometricAuthHelper.promptGeneralUnlock(
-            activity = this,
-            title = "Authorize Nearby Transfer",
-            subtitle = "Authenticate to send encrypted vault",
-            onSuccess = {
-                executeP2pSend(localIp)
-            },
-            onError = { _, msg ->
-                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-            }
-        )
+        return suspendCancellableCoroutine { cont ->
+            BiometricAuthHelper.promptGeneralUnlock(
+                activity = this,
+                title = "Authorize Transfer",
+                subtitle = "Send your vault to $receiverName",
+                onSuccess = {
+                    SessionManager.markAuthenticated()
+                    if (cont.isActive) cont.resume(true)
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    if (cont.isActive) cont.resume(false)
+                }
+            )
+        }
     }
 
     private fun executeP2pSend(localIp: String) {
         lifecycleScope.launch {
             try {
-                val token = QrCodeHelper.generateSecureToken()
-                val vaultFile = VaultExportImportManager.exportVault(this@MainActivity, lockerRepository, token)
+                val transferKey = QrCodeHelper.generateTransferKey()
+                val sessionKeys = P2pSessionKeys(transferKey)
+                // Built only after the sender approves a connected receiver
+                var vaultFile: File? = null
 
                 activeP2pServer?.stop()
 
@@ -954,13 +1098,24 @@ class MainActivity : AppCompatActivity() {
                     }
                     .setOnDismissListener {
                         activeP2pServer?.stop()
+                        vaultFile?.delete()
                     }
                     .create()
 
                 val server = P2pTransferServer(
-                    vaultFile = vaultFile,
-                    expectedToken = token,
+                    expectedSessionId = sessionKeys.sessionId,
                     timeoutSeconds = 90,
+                    onReceiverConnected = { receiverName, receiverAddress ->
+                        withContext(Dispatchers.Main) {
+                            if (approveP2pReceiver(receiverName, receiverAddress)) {
+                                VaultExportImportManager.exportVaultWithKey(
+                                    this@MainActivity, lockerRepository, sessionKeys.encryptionKey
+                                ).also { vaultFile = it }
+                            } else {
+                                null
+                            }
+                        }
+                    },
                     onStatusUpdate = { status ->
                         runOnUiThread {
                             dialogBinding.tvP2pStatus.text = status
@@ -968,9 +1123,12 @@ class MainActivity : AppCompatActivity() {
                     },
                     onTransferComplete = {
                         runOnUiThread {
-                            dialogBinding.tvP2pStatus.text = "✅ Transfer complete! Vault delivered."
+                            dialogBinding.tvP2pStatus.text = "Transfer complete"
                             dialogBinding.progressBarP2p.visibility = View.GONE
-                            Toast.makeText(this@MainActivity, "Vault transferred successfully!", Toast.LENGTH_SHORT).show()
+                            dialogBinding.root.postDelayed({
+                                if (dialog.isShowing) dialog.dismiss()
+                                Toast.makeText(this@MainActivity, "Vault sent", Toast.LENGTH_SHORT).show()
+                            }, 1200)
                         }
                     },
                     onError = { error ->
@@ -994,12 +1152,13 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val p2pUri = "securepass://p2p?ip=$localIp&port=$port&token=$token"
+                val p2pUri = "securepass://p2p?v=2&ip=$localIp&port=$port&key=${QrCodeHelper.encodeTransferKey(transferKey)}"
                 val qrBitmap = QrCodeHelper.generateQrCodeBitmap(p2pUri, 512)
 
                 dialogBinding.ivP2pQr.setImageBitmap(qrBitmap)
                 dialogBinding.tvP2pAddress.text = "Wi-Fi: $localIp:$port"
-                dialogBinding.tvP2pToken.text = "Token: $token"
+                // The QR carries the decryption key, so nothing secret is printed on screen
+                dialogBinding.tvP2pToken.visibility = View.GONE
 
                 dialog.show()
 
@@ -1026,21 +1185,9 @@ class MainActivity : AppCompatActivity() {
     // ==========================================
 
     private fun checkCameraAndLaunchScanner() {
-        val status = BiometricAuthHelper.checkBiometricAvailability(this)
-        if (status is BiometricAuthHelper.BiometricStatus.Ready) {
-            BiometricAuthHelper.promptGeneralUnlock(
-                activity = this,
-                title = "Authorize Vault Receive",
-                subtitle = "Authenticate to receive vault",
-                onSuccess = {
-                    proceedWithCameraCheck()
-                },
-                onError = { _, msg ->
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                }
-            )
-            return
-        }
+        if (!ensureDeviceProtectedForReceive()) return
+        // No fingerprint yet: the sender approves the connection, and the locker unlock happens
+        // before anything incoming is compared or imported
         proceedWithCameraCheck()
     }
 
@@ -1067,19 +1214,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleScannedQrContent(scanned: String) {
         val clean = scanned.trim()
-        if (clean.startsWith("securepass://p2p", ignoreCase = true) ||
-            clean.startsWith("https://securepass.app/p2p", ignoreCase = true)) {
-            val uri = Uri.parse(clean)
-            val ip = uri.getQueryParameter("ip")
-            val port = uri.getQueryParameter("port")?.toIntOrNull()
-            val token = uri.getQueryParameter("token")
-
-            if (ip.isNullOrBlank() || port == null || token.isNullOrBlank()) {
-                Toast.makeText(this, "Invalid P2P QR code format", Toast.LENGTH_SHORT).show()
+        if (clean.startsWith("securepass://", ignoreCase = true)) {
+            val target = parseP2pTarget(Uri.parse(clean))
+            if (target == null) {
+                showUnsupportedTransferCodeDialog()
                 return
             }
-
-            startP2pReceiverFlow(ip, port, token)
+            if (ensureDeviceProtectedForReceive()) startP2pReceiverFlow(target)
         } else {
             // Standard manual token
             if (activeTokenInput != null) {
@@ -1091,21 +1232,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startP2pReceiverFlow(ip: String, port: Int, token: String) {
+    private fun startP2pReceiverFlow(target: P2pTarget) {
+        val (ip, port) = target.ip to target.port
+        val sessionKeys = P2pSessionKeys(target.transferKey)
         val progressDialog = MaterialAlertDialogBuilder(this)
             .setTitle("Receiving Encrypted Vault")
-            .setMessage("Connecting to $ip:$port over local Wi-Fi...")
+            .setMessage("Connecting to $ip:$port...\n\nApprove the transfer on the sending device.")
             .setCancelable(false)
             .create()
         progressDialog.show()
 
         lifecycleScope.launch {
+            val destFile = File(cacheDir, "p2p_incoming_${System.currentTimeMillis()}.spvault")
             try {
-                val destFile = File(cacheDir, "p2p_incoming_${System.currentTimeMillis()}.spvault")
                 P2pTransferClient.downloadVault(
                     host = ip,
                     port = port,
-                    token = token,
+                    sessionId = sessionKeys.sessionId,
+                    deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
                     destinationFile = destFile,
                     onProgress = { downloaded, total ->
                         runOnUiThread {
@@ -1121,8 +1265,12 @@ class MainActivity : AppCompatActivity() {
 
                 progressDialog.dismiss()
 
+                if (!awaitLockerUnlock("Unlock to review the incoming documents")) return@launch
+
                 // Analyze conflicts
-                val report = VaultExportImportManager.prepareVaultImportFromFile(lockerRepository, destFile, token)
+                val report = VaultExportImportManager.prepareVaultImportFromFileWithKey(
+                    lockerRepository, destFile, sessionKeys.encryptionKey
+                )
                 showConflictResolutionOrCommit(report)
             } catch (e: Exception) {
                 progressDialog.dismiss()
@@ -1131,6 +1279,8 @@ class MainActivity : AppCompatActivity() {
                     .setMessage(e.message ?: "Failed to receive vault from nearby device.")
                     .setPositiveButton("OK", null)
                     .show()
+            } finally {
+                destFile.delete()
             }
         }
     }
@@ -1314,6 +1464,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun promptBiometricForImport() {
+        if (!ensureDeviceProtectedForReceive()) return
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
         if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
             launchVaultFilePicker()
