@@ -194,14 +194,54 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIncomingIntent() {
+        val currentIntent = intent ?: return
+
+        // 1. Check Deep Link (e.g. from Samsung Camera, Google Lens, or browser)
+        val uri = currentIntent.data
+        if (currentIntent.action == Intent.ACTION_VIEW && uri != null) {
+            val scheme = uri.scheme
+            val host = uri.host
+            if (scheme.equals("securepass", ignoreCase = true) ||
+                (scheme.equals("https", ignoreCase = true) && host.equals("securepass.app", ignoreCase = true))) {
+                val ip = uri.getQueryParameter("ip")
+                val port = uri.getQueryParameter("port")?.toIntOrNull()
+                val token = uri.getQueryParameter("token")
+                if (!ip.isNullOrBlank() && port != null && !token.isNullOrBlank()) {
+                    intent = null // Clear so configuration change won't re-trigger
+                    promptToReceiveDeepLink(ip, port, token)
+                    return
+                }
+            }
+        }
+
+        // 2. Check Passphrase Tile & Auto-Copy Actions
         if (!prefs.hasStoredPassphrase) return
 
-        val isTileAction = intent?.action == ACTION_TRIGGER_COPY
+        val isTileAction = currentIntent.action == ACTION_TRIGGER_COPY
         if (isTileAction) {
             triggerUnlockAndCopy(forcedFromTile = true)
         } else if (prefs.isAutoCopyEnabled && !hasHandledAutoLaunch) {
             hasHandledAutoLaunch = true
             triggerUnlockAndCopy(forcedFromTile = false)
+        }
+    }
+
+    private fun promptToReceiveDeepLink(ip: String, port: Int, token: String) {
+        val status = BiometricAuthHelper.checkBiometricAvailability(this)
+        if (status is BiometricAuthHelper.BiometricStatus.Ready) {
+            BiometricAuthHelper.promptGeneralUnlock(
+                activity = this,
+                title = "Authorize Vault Receive",
+                subtitle = "Authenticate to receive vault from $ip",
+                onSuccess = {
+                    startP2pReceiverFlow(ip, port, token)
+                },
+                onError = { _, msg ->
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
+            )
+        } else {
+            startP2pReceiverFlow(ip, port, token)
         }
     }
 
@@ -1027,7 +1067,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleScannedQrContent(scanned: String) {
         val clean = scanned.trim()
-        if (clean.startsWith("securepass://p2p", ignoreCase = true)) {
+        if (clean.startsWith("securepass://p2p", ignoreCase = true) ||
+            clean.startsWith("https://securepass.app/p2p", ignoreCase = true)) {
             val uri = Uri.parse(clean)
             val ip = uri.getQueryParameter("ip")
             val port = uri.getQueryParameter("port")?.toIntOrNull()

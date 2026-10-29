@@ -37,6 +37,22 @@
                 <action android:name="com.mattintech.securepass.ACTION_TRIGGER_COPY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Deep linking for P2P Vault Transfer via QR Scan from Camera / Google Lens -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="securepass" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="securepass.app"
+                    android:pathPrefix="/p2p" />
+            </intent-filter>
         </activity>
 
         <!-- Secure Document Locker Activities -->
