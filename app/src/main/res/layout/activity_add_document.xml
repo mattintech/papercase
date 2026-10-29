@@ -313,7 +313,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:text="⚠️ Note: If you forget this password, this specific document cannot be recovered."
+                            android:text="Note: If you forget this password, this specific document cannot be recovered."
                             android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                             android:textColor="?attr/colorError" />
 
