@@ -20,6 +20,7 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.securepass.R
+import com.mattintech.securepass.auth.SessionManager
 import com.mattintech.securepass.crypto.BiometricAuthHelper
 import com.mattintech.securepass.crypto.KeystoreHelper
 import com.mattintech.securepass.databinding.ActivityDocumentViewerBinding
@@ -58,11 +59,13 @@ class DocumentViewerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Block screenshots, screen recording, and task switcher peek
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+        // Block screenshots in release builds; allow in debug builds for layout inspection
+        if (!com.mattintech.securepass.BuildConfig.DEBUG) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
 
         binding = ActivityDocumentViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -101,6 +104,10 @@ class DocumentViewerActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!SessionManager.isLockerUnlocked) {
+            finish()
+            return
+        }
         documentId?.let { loadDocument(it) }
     }
 
@@ -122,8 +129,14 @@ class DocumentViewerActivity : AppCompatActivity() {
         binding.btnCopyNumber.setOnClickListener {
             val number = currentDocument?.documentNumber.orEmpty()
             if (number.isNotBlank()) {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Document Number", number))
+                val prefs = com.mattintech.securepass.data.PreferencesManager(this)
+                val timeout = if (prefs.isAutoClearEnabled) prefs.clearTimeoutSeconds else 0
+                com.mattintech.securepass.clipboard.ClipboardSecurityManager.copyToClipboard(
+                    context = this,
+                    passphrase = number,
+                    timeoutSeconds = timeout,
+                    label = "Document Number"
+                )
                 Toast.makeText(this, "Document number copied to clipboard", Toast.LENGTH_SHORT).show()
             }
         }

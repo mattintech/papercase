@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.datepicker.MaterialDatePicker
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.securepass.R
+import com.mattintech.securepass.auth.SessionManager
 import com.mattintech.securepass.databinding.ActivityAddDocumentBinding
 import com.mattintech.securepass.databinding.ItemAttachmentChipBinding
 import com.mattintech.securepass.locker.crypto.DocumentPasswordCrypto
@@ -134,11 +135,13 @@ class AddDocumentActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Prevent screenshots, task switcher previews, and screen recording of sensitive documents
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+        // Prevent screenshots in release builds; allow in debug builds for layout inspection
+        if (!com.mattintech.securepass.BuildConfig.DEBUG) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
 
         binding = ActivityAddDocumentBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -155,6 +158,13 @@ class AddDocumentActivity : AppCompatActivity() {
         } else {
             updateDocumentTypeUI(getSelectedDocumentType())
             renderAttachmentsUI()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!SessionManager.isLockerUnlocked) {
+            finish()
         }
     }
 

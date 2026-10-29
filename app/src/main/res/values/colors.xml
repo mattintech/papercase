@@ -1,41 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand colors -->
-    <color name="primary">#0F6CBD</color>
+    <!-- Modern Tech Vibrant Palette (Material 3 Expressive) -->
+    <color name="primary">#0B57D0</color>
     <color name="on_primary">#FFFFFF</color>
-    <color name="primary_container">#D8E6FD</color>
-    <color name="on_primary_container">#001B3E</color>
+    <color name="primary_container">#D3E3FD</color>
+    <color name="on_primary_container">#041E49</color>
 
-    <color name="secondary">#535F70</color>
+    <color name="primary_dark_mode">#A8C7FA</color>
+    <color name="on_primary_dark_mode">#062E6F</color>
+    <color name="primary_container_dark_mode">#0842A0</color>
+    <color name="on_primary_container_dark_mode">#D3E3FD</color>
+
+    <color name="secondary">#4D5F7C</color>
     <color name="on_secondary">#FFFFFF</color>
-    <color name="secondary_container">#D7E3F8</color>
-    <color name="on_secondary_container">#101C2B</color>
+    <color name="secondary_container">#D7E3FC</color>
+    <color name="on_secondary_container">#071B35</color>
 
-    <color name="tertiary">#6B5778</color>
+    <color name="secondary_dark_mode">#B4C7E7</color>
+    <color name="on_secondary_dark_mode">#1E314B</color>
+    <color name="secondary_container_dark_mode">#354763</color>
+    <color name="on_secondary_container_dark_mode">#D7E3FC</color>
+
+    <color name="tertiary">#69577D</color>
     <color name="on_tertiary">#FFFFFF</color>
+    <color name="tertiary_container">#F1DBFF</color>
+    <color name="on_tertiary_container">#241536</color>
+
+    <!-- Semantic & Status -->
+    <color name="status_protected">#0F9D58</color>
+    <color name="status_protected_container">#C4EED0</color>
+    <color name="status_protected_on_container">#003919</color>
+
+    <color name="status_warning">#E37400</color>
+    <color name="status_warning_container">#FFE0B2</color>
 
     <color name="error">#BA1A1A</color>
     <color name="on_error">#FFFFFF</color>
     <color name="error_container">#FFDAD6</color>
     <color name="on_error_container">#410002</color>
 
-    <color name="success">#1B8738</color>
-    <color name="success_container">#D4F6DC</color>
-    <color name="on_success_container">#002108</color>
-
-    <color name="background_light">#F8F9FA</color>
+    <!-- Light Surface Hierarchy -->
+    <color name="background_light">#F8F9FD</color>
     <color name="surface_light">#FFFFFF</color>
-    <color name="surface_variant_light">#E1E2EC</color>
-    <color name="on_surface_light">#1A1C1E</color>
-    <color name="on_surface_variant_light">#44474E</color>
+    <color name="surface_container_low_light">#F3F5FA</color>
+    <color name="surface_container_light">#EDF0F7</color>
+    <color name="surface_container_high_light">#E7EBF2</color>
+    <color name="surface_variant_light">#DFE3EC</color>
+    <color name="outline_light">#737785</color>
+    <color name="outline_variant_light">#E0E3EB</color>
+    <color name="on_surface_light">#191C20</color>
+    <color name="on_surface_variant_light">#434751</color>
 
-    <color name="background_dark">#121316</color>
-    <color name="surface_dark">#1E2024</color>
-    <color name="surface_variant_dark">#2C2F36</color>
+    <!-- Dark Surface Hierarchy (Deep OLED) -->
+    <color name="background_dark">#0E1014</color>
+    <color name="surface_dark">#16191E</color>
+    <color name="surface_container_low_dark">#1A1D23</color>
+    <color name="surface_container_dark">#20242B</color>
+    <color name="surface_container_high_dark">#272C34</color>
+    <color name="surface_variant_dark">#2B303A</color>
+    <color name="outline_dark">#8D9199</color>
+    <color name="outline_variant_dark">#313642</color>
     <color name="on_surface_dark">#E2E2E6</color>
-    <color name="on_surface_variant_dark">#C4C6D0</color>
+    <color name="on_surface_variant_dark">#C3C6D1</color>
 
-    <!-- Legacy / general -->
+    <!-- General -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

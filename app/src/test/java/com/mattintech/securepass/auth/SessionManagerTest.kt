@@ -63,4 +63,38 @@ class SessionManagerTest {
         fakeCurrentTime += 4 * 60 * 1000L
         assertTrue(SessionManager.isSessionValid())
     }
+
+    @Test
+    fun testBackgroundTimeout_locksSessionAfter30Seconds() {
+        SessionManager.markAuthenticated()
+        assertTrue(SessionManager.isLockerUnlocked)
+
+        SessionManager.onAppEnteredBackground()
+        // Advance 31 seconds in background
+        fakeCurrentTime += 31_000L
+
+        SessionManager.onAppEnteredForeground()
+        assertFalse("Locker should be locked after 30s in background", SessionManager.isLockerUnlocked)
+    }
+
+    @Test
+    fun testBackgroundResumeWithin30Seconds_staysUnlocked() {
+        SessionManager.markAuthenticated()
+        assertTrue(SessionManager.isLockerUnlocked)
+
+        SessionManager.onAppEnteredBackground()
+        // Advance only 15 seconds in background
+        fakeCurrentTime += 15_000L
+
+        SessionManager.onAppEnteredForeground()
+        assertTrue("Locker should remain unlocked when returning within 30s", SessionManager.isLockerUnlocked)
+    }
+
+    @Test
+    fun testBackgroundCheckAndLockDirectly() {
+        SessionManager.markAuthenticated()
+        SessionManager.onAppEnteredBackground()
+        SessionManager.checkAndLockDueToInactivity()
+        assertFalse("Locker should be locked by inactivity check", SessionManager.isLockerUnlocked)
+    }
 }

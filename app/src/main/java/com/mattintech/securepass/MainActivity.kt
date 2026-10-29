@@ -4,19 +4,23 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PersistableBundle
+import android.provider.Settings
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -56,7 +60,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var documentsAdapter: SecureDocumentsAdapter
 
     private var allDocuments: List<SecureDocument> = emptyList()
-    private var isLockerUnlocked = false
+    private var isLockerUnlocked: Boolean
+        get() = SessionManager.isLockerUnlocked
+        set(value) {
+            SessionManager.isLockerUnlocked = value
+        }
     private var hasHandledAutoLaunch = false
     private var activeTokenInput: android.widget.EditText? = null
 
@@ -189,6 +197,15 @@ class MainActivity : AppCompatActivity() {
                 left = navBarInsets.left,
                 right = navBarInsets.right
             )
+            binding.bottomNavigation.post {
+                val navHeight = binding.bottomNavigation.height
+                binding.contentFrame.updatePadding(bottom = navHeight)
+                val extraMargin = (16 * resources.displayMetrics.density).toInt()
+                binding.fabAddDocument.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                    bottomMargin = navHeight + extraMargin
+                    rightMargin = navBarInsets.right + extraMargin
+                }
+            }
             insets
         }
     }
@@ -209,7 +226,62 @@ class MainActivity : AppCompatActivity() {
         binding.layoutTimeoutSelection.visibility =
             if (prefs.isAutoClearEnabled) View.VISIBLE else View.GONE
 
+        // Samsung Clipboard Advisory
+        val isSamsung = isSamsungDevice()
+        if (isSamsung) {
+            binding.cardSamsungAlert.visibility =
+                if (!prefs.isSamsungClipboardWarningDismissed) View.VISIBLE else View.GONE
+            binding.layoutSamsungClipboardRow.visibility = View.VISIBLE
+            binding.dividerSamsungRow.visibility = View.VISIBLE
+        } else {
+            binding.cardSamsungAlert.visibility = View.GONE
+            binding.layoutSamsungClipboardRow.visibility = View.GONE
+            binding.dividerSamsungRow.visibility = View.GONE
+        }
+
+        binding.btnDismissSamsungAlert.setOnClickListener {
+            prefs.isSamsungClipboardWarningDismissed = true
+            binding.cardSamsungAlert.visibility = View.GONE
+        }
+
+        binding.btnFixSamsungSettings.setOnClickListener {
+            showSamsungClipboardDialog()
+        }
+
+        binding.layoutSamsungClipboardRow.setOnClickListener {
+            showSamsungClipboardDialog()
+        }
+
         updateVaultStatusUI()
+    }
+
+    private fun isSamsungDevice(): Boolean {
+        return Build.MANUFACTURER.equals("samsung", ignoreCase = true) ||
+                Build.BRAND.equals("samsung", ignoreCase = true)
+    }
+
+    private fun showSamsungClipboardDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Samsung Clipboard History")
+            .setMessage(
+                "Samsung One UI maintains an internal clipboard history tray in Samsung Keyboard that retains copied text even after SecurePass wipes the Android clipboard.\n\n" +
+                "To ensure complete privacy for your credentials:\n\n" +
+                "1. Tap 'Open Keyboard Settings' below.\n" +
+                "2. Tap 'Samsung Keyboard'.\n" +
+                "3. Tap 'Clipboard' (or 'Suggest text replacements').\n" +
+                "4. Turn off 'Clipboard history'.\n\n" +
+                "Tip: You can also set Gboard or an open-source keyboard as your default."
+            )
+            .setPositiveButton("Open Keyboard Settings") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Could not open settings: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Got It", null)
+            .show()
     }
 
     private fun setupListeners() {
@@ -311,8 +383,13 @@ class MainActivity : AppCompatActivity() {
                 DocumentViewerActivity.start(this, doc.id)
             },
             onCopyNumber = { doc ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Document Number", doc.documentNumber))
+                val timeout = if (prefs.isAutoClearEnabled) prefs.clearTimeoutSeconds else 0
+                ClipboardSecurityManager.copyToClipboard(
+                    context = this,
+                    passphrase = doc.documentNumber,
+                    timeoutSeconds = timeout,
+                    label = "Document Number"
+                )
                 Toast.makeText(this, "Copied ${doc.documentNumber}", Toast.LENGTH_SHORT).show()
             }
         )
@@ -346,7 +423,9 @@ class MainActivity : AppCompatActivity() {
     private fun showPassphraseVaultTab() {
         binding.nestedScrollView.visibility = View.VISIBLE
         binding.layoutSecureLocker.visibility = View.GONE
-        binding.toolbar.title = getString(R.string.app_name)
+        binding.fabAddDocument.hide()
+        binding.ivToolbarLogo.setImageResource(R.drawable.ic_shield_check)
+        binding.tvToolbarTitle.text = getString(R.string.app_name)
         binding.btnLockLocker.visibility = View.GONE
         binding.btnVaultTransfer.visibility = View.GONE
     }
@@ -394,7 +473,9 @@ class MainActivity : AppCompatActivity() {
     private fun displayLockerTab() {
         binding.nestedScrollView.visibility = View.GONE
         binding.layoutSecureLocker.visibility = View.VISIBLE
-        binding.toolbar.title = "Secure Locker"
+        binding.fabAddDocument.show()
+        binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
+        binding.tvToolbarTitle.text = "Secure Locker"
         binding.btnLockLocker.visibility = View.VISIBLE
         binding.btnVaultTransfer.visibility = View.VISIBLE
         loadSecureLockerDocuments()
@@ -773,9 +854,14 @@ class MainActivity : AppCompatActivity() {
             .setView(layout)
             .setPositiveButton("Done", null)
             .setNeutralButton("Copy Token") { _, _ ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("SecurePass Token", token))
-                Toast.makeText(this, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
+                val timeout = if (prefs.isAutoClearEnabled) prefs.clearTimeoutSeconds else 0
+                ClipboardSecurityManager.copyToClipboard(
+                    context = this@MainActivity,
+                    passphrase = token,
+                    timeoutSeconds = timeout,
+                    label = "SecurePass Token"
+                )
+                Toast.makeText(this@MainActivity, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
             }
             .show()
     }

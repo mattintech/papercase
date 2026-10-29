@@ -12,7 +12,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Enter the master passphrase for your KeePass2Android database. It will be encrypted into your device's hardware-backed keystore."
+        android:text="Enter your master passphrase. It will be encrypted into your device's hardware-backed keystore."
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
         android:textColor="?attr/colorOnSurfaceVariant" />
 

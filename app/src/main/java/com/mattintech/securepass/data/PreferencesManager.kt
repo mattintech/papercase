@@ -40,6 +40,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getInt(KEY_LOCKER_TIMEOUT_MINUTES, 5)
         set(value) = prefs.edit().putInt(KEY_LOCKER_TIMEOUT_MINUTES, value).apply()
 
+    var isSamsungClipboardWarningDismissed: Boolean
+        get() = prefs.getBoolean("samsung_clipboard_warning_dismissed", false)
+        set(value) = prefs.edit().putBoolean("samsung_clipboard_warning_dismissed", value).apply()
+
     var isAutoCopyEnabled: Boolean
         get() = prefs.getBoolean(KEY_AUTO_COPY, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_COPY, value).apply()

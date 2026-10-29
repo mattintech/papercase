@@ -109,50 +109,24 @@ class ClipboardCountdownService : Service() {
 
             ClipboardSecurityManager.updateRemaining(0)
 
-            // Overwrite clipboard
-            wipeClipboard()
+            // Direct canonical clear via ClipboardSecurityManager
+            ClipboardSecurityManager.doExecuteClear(applicationContext)
 
-            // Try launching ClearClipboardActivity to guarantee focused clear
-            try {
-                val clearIntent = Intent(applicationContext, ClearClipboardActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                }
-                startActivity(clearIntent)
-            } catch (e: Exception) {
-                Log.w(TAG, "Activity launch from background restricted: ${e.message}")
-            }
+            val prefs = PreferencesManager(applicationContext)
+            prefs.lastCopiedTimestamp = 0L
 
-            delay(500L)
+            delay(300L)
             ClipboardSecurityManager.updateRemaining(null)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
 
-    private fun wipeClipboard() {
-        try {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val emptyClip = ClipData.newPlainText("", "")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                emptyClip.description.extras = PersistableBundle().apply {
-                    putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
-                }
-            }
-            clipboard.setPrimaryClip(emptyClip)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                clipboard.clearPrimaryClip()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error wiping clipboard in service", e)
-        }
-
-        val prefs = PreferencesManager(applicationContext)
-        prefs.lastCopiedTimestamp = 0L
-    }
-
     private fun stopCountdownAndSelf() {
         countdownJob?.cancel()
-        wipeClipboard()
+        ClipboardSecurityManager.doExecuteClear(applicationContext)
+        val prefs = PreferencesManager(applicationContext)
+        prefs.lastCopiedTimestamp = 0L
         ClipboardSecurityManager.updateRemaining(null)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()

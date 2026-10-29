@@ -17,9 +17,35 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="@string/app_name"
+            app:title=""
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
             app:titleTextColor="?attr/colorOnSurface">
+
+            <LinearLayout
+                android:id="@+id/layoutToolbarTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/ivToolbarLogo"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_shield_check"
+                    app:tint="?attr/colorPrimary" />
+
+                <TextView
+                    android:id="@+id/tvToolbarTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:letterSpacing="-0.02"
+                    android:text="@string/app_name"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnVaultTransfer"
@@ -60,26 +86,62 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Main Content Frame (holds both tabs) -->
+    <!-- Main Content Frame (holds both tabs; bottom inset padded dynamically) -->
     <FrameLayout
         android:id="@+id/contentFrame"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginBottom="80dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <!-- TAB 1: PASSPHRASE VAULT (Existing KeePass2Android auto-copy dashboard) -->
+        <!-- TAB 1: PASSPHRASE VAULT (KeePass2Android auto-copy dashboard) -->
         <androidx.core.widget.NestedScrollView
             android:id="@+id/nestedScrollView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true">
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:paddingBottom="32dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:paddingHorizontal="16dp"
+                android:paddingTop="4dp">
+
+                <!-- Header Greeting / Hardware Badge -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_status_pill"
+                        android:letterSpacing="0.08"
+                        android:paddingHorizontal="12dp"
+                        android:paddingVertical="4dp"
+                        android:text="🔒 HARDWARE ENCRYPTED"
+                        android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                        android:textColor="@color/status_protected_on_container"
+                        android:textStyle="bold" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Android Keystore"
+                        android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                </LinearLayout>
 
                 <!-- Clipboard Active Alert Banner -->
                 <com.google.android.material.card.MaterialCardView
@@ -89,74 +151,10 @@
                     android:layout_marginBottom="16dp"
                     android:visibility="gone"
                     app:cardBackgroundColor="?attr/colorPrimaryContainer"
-                    app:cardCornerRadius="16dp"
+                    app:cardCornerRadius="24dp"
+                    app:cardElevation="0dp"
                     app:strokeWidth="0dp"
                     tools:visibility="visible">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <ImageView
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
-                                android:src="@drawable/ic_timer"
-                                app:tint="?attr/colorOnPrimaryContainer" />
-
-                            <TextView
-                                android:id="@+id/tvClipboardCountdown"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="12dp"
-                                android:layout_weight="1"
-                                android:text="Passphrase in clipboard • Clearing in 10s"
-                                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
-                                android:textColor="?attr/colorOnPrimaryContainer" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnClearClipboardNow"
-                                style="@style/Widget.Material3.Button.TonalButton"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Clear Now"
-                                app:icon="@drawable/ic_clear" />
-
-                        </LinearLayout>
-
-                        <com.google.android.material.progressindicator.LinearProgressIndicator
-                            android:id="@+id/progressCountdown"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="12dp"
-                            android:max="100"
-                            android:progress="100"
-                            app:indicatorColor="?attr/colorPrimary"
-                            app:trackColor="?attr/colorSurfaceVariant"
-                            app:trackCornerRadius="4dp"
-                            app:trackThickness="6dp" />
-
-                    </LinearLayout>
-
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Status / Primary Action Hero Card -->
-                <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/cardVaultStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="2dp"
-                    app:strokeColor="?attr/colorSurfaceVariant"
-                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -171,13 +169,179 @@
                             android:orientation="horizontal">
 
                             <ImageView
-                                android:id="@+id/ivVaultIcon"
-                                android:layout_width="48dp"
-                                android:layout_height="48dp"
-                                android:background="@drawable/bg_icon_circle"
-                                android:padding="10dp"
-                                android:src="@drawable/ic_shield_lock"
-                                app:tint="?attr/colorPrimary" />
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:src="@drawable/ic_timer"
+                                app:tint="?attr/colorOnPrimaryContainer" />
+
+                            <TextView
+                                android:id="@+id/tvClipboardCountdown"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:text="Passphrase in clipboard • Clearing in 10s"
+                                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                                android:textColor="?attr/colorOnPrimaryContainer"
+                                android:textStyle="bold" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnClearClipboardNow"
+                                style="@style/Widget.Material3.Button.TonalButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Clear"
+                                app:cornerRadius="16dp"
+                                app:icon="@drawable/ic_clear"
+                                app:iconSize="16dp" />
+
+                        </LinearLayout>
+
+                        <com.google.android.material.progressindicator.LinearProgressIndicator
+                            android:id="@+id/progressCountdown"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:max="100"
+                            android:progress="100"
+                            app:indicatorColor="?attr/colorPrimary"
+                            app:trackColor="?attr/colorSurfaceVariant"
+                            app:trackCornerRadius="4dp"
+                            app:trackThickness="6dp" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Samsung Clipboard Privacy Advisory Banner (Shown on Samsung devices) -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardSamsungAlert"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainer"
+                    app:cardCornerRadius="24dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/status_warning"
+                    app:strokeWidth="1dp"
+                    tools:visibility="visible">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="20dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_squircle_orange"
+                                android:padding="9dp"
+                                android:src="@drawable/ic_shield_check"
+                                app:tint="@color/status_warning" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="14dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Samsung Clipboard Advisory"
+                                    android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="3dp"
+                                    android:text="Samsung Keyboard retains its own persistent clipboard history tray."
+                                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:gravity="end"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnDismissSamsungAlert"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Dismiss" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnFixSamsungSettings"
+                                style="@style/Widget.Material3.Button.TonalButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:text="Privacy Guide"
+                                app:cornerRadius="16dp" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Modern Status / Primary Action Hero Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardVaultStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainer"
+                    app:cardCornerRadius="28dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/colorOutlineVariant"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="22dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <!-- Modern Concentric Glow Ring Icon -->
+                            <FrameLayout
+                                android:layout_width="60dp"
+                                android:layout_height="60dp"
+                                android:background="@drawable/bg_hero_ring">
+
+                                <ImageView
+                                    android:id="@+id/ivVaultIcon"
+                                    android:layout_width="32dp"
+                                    android:layout_height="32dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_shield_lock"
+                                    app:tint="?attr/colorPrimary" />
+
+                            </FrameLayout>
 
                             <LinearLayout
                                 android:layout_width="0dp"
@@ -198,7 +362,7 @@
                                     android:id="@+id/tvVaultSubtitle"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
+                                    android:layout_marginTop="3dp"
                                     android:text="@string/status_protected_desc"
                                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                     android:textColor="?attr/colorOnSurfaceVariant" />
@@ -207,17 +371,17 @@
 
                         </LinearLayout>
 
-                        <!-- Big Unlock & Copy Button -->
+                        <!-- Big Expressive Unlock & Copy Button (Full Pill) -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnUnlockCopy"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="match_parent"
-                            android:layout_height="56dp"
+                            android:layout_height="58dp"
                             android:layout_marginTop="20dp"
                             android:text="@string/btn_unlock_copy"
                             android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                             android:textStyle="bold"
-                            app:cornerRadius="16dp"
+                            app:cornerRadius="29dp"
                             app:icon="@drawable/ic_fingerprint"
                             app:iconGravity="textStart"
                             app:iconPadding="10dp"
@@ -228,13 +392,13 @@
                             android:id="@+id/btnInitialSetup"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="match_parent"
-                            android:layout_height="56dp"
+                            android:layout_height="58dp"
                             android:layout_marginTop="20dp"
                             android:text="@string/btn_set_passphrase"
                             android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                             android:textStyle="bold"
                             android:visibility="gone"
-                            app:cornerRadius="16dp"
+                            app:cornerRadius="29dp"
                             app:icon="@drawable/ic_lock"
                             app:iconGravity="textStart"
                             app:iconPadding="10dp"
@@ -245,40 +409,52 @@
                             android:id="@+id/layoutVaultActions"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="12dp"
+                            android:layout_marginTop="14dp"
                             android:gravity="center"
                             android:orientation="horizontal">
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnViewPassphrase"
-                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginEnd="6dp"
+                                android:layout_height="44dp"
+                                android:layout_marginEnd="8dp"
                                 android:layout_weight="1"
                                 android:text="@string/btn_view_passphrase"
+                                app:cornerRadius="22dp"
                                 app:icon="@drawable/ic_visibility"
                                 app:iconSize="18dp" />
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnEditPassphrase"
-                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginEnd="6dp"
+                                android:layout_height="44dp"
+                                android:layout_marginEnd="8dp"
                                 android:layout_weight="1"
                                 android:text="@string/btn_edit_passphrase"
+                                app:cornerRadius="22dp"
+                                app:icon="@drawable/ic_edit"
                                 app:iconSize="18dp" />
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnDeletePassphrase"
-                                style="@style/Widget.Material3.Button.TextButton"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textColor="?attr/colorError"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
+                                android:contentDescription="Remove Passphrase"
+                                android:insetLeft="0dp"
+                                android:insetTop="0dp"
+                                android:insetRight="0dp"
+                                android:insetBottom="0dp"
+                                android:padding="0dp"
+                                app:cornerRadius="22dp"
                                 app:icon="@drawable/ic_delete"
+                                app:iconGravity="textStart"
+                                app:iconPadding="0dp"
                                 app:iconSize="18dp"
-                                app:iconTint="?attr/colorError" />
+                                app:iconTint="?attr/colorError"
+                                app:strokeColor="?attr/colorOutlineVariant" />
 
                         </LinearLayout>
 
@@ -286,25 +462,27 @@
 
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Automation & Settings Card -->
+                <!-- Modern Automation & Security Group Card (One UI / iOS Grouped Style) -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="1dp"
-                    app:strokeColor="?attr/colorSurfaceVariant"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainer"
+                    app:cardCornerRadius="28dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/colorOutlineVariant"
                     app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="20dp">
+                        android:padding="22dp">
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:letterSpacing="-0.01"
                             android:text="@string/settings_title"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                             android:textColor="?attr/colorPrimary"
@@ -314,14 +492,24 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="16dp"
+                            android:layout_marginTop="18dp"
                             android:gravity="center_vertical"
                             android:orientation="horizontal">
+
+                            <!-- Squircle Blue Icon -->
+                            <ImageView
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_squircle_blue"
+                                android:padding="9dp"
+                                android:src="@drawable/ic_content_copy"
+                                app:tint="?attr/colorPrimary" />
 
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_marginEnd="16dp"
+                                android:layout_marginStart="14dp"
+                                android:layout_marginEnd="12dp"
                                 android:layout_weight="1"
                                 android:orientation="vertical">
 
@@ -329,7 +517,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="@string/setting_auto_copy_title"
-                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                                     android:textStyle="bold" />
 
                                 <TextView
@@ -352,7 +540,9 @@
                         <com.google.android.material.divider.MaterialDivider
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginVertical="12dp" />
+                            android:layout_marginStart="54dp"
+                            android:layout_marginVertical="14dp"
+                            app:dividerColor="?attr/colorOutlineVariant" />
 
                         <!-- Auto-Minimize Switch -->
                         <LinearLayout
@@ -361,10 +551,20 @@
                             android:gravity="center_vertical"
                             android:orientation="horizontal">
 
+                            <!-- Squircle Purple Icon -->
+                            <ImageView
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_squircle_purple"
+                                android:padding="9dp"
+                                android:src="@drawable/ic_minimize"
+                                app:tint="?attr/colorTertiary" />
+
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_marginEnd="16dp"
+                                android:layout_marginStart="14dp"
+                                android:layout_marginEnd="12dp"
                                 android:layout_weight="1"
                                 android:orientation="vertical">
 
@@ -372,7 +572,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="@string/setting_auto_minimize_title"
-                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                                     android:textStyle="bold" />
 
                                 <TextView
@@ -395,7 +595,9 @@
                         <com.google.android.material.divider.MaterialDivider
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginVertical="12dp" />
+                            android:layout_marginStart="54dp"
+                            android:layout_marginVertical="14dp"
+                            app:dividerColor="?attr/colorOutlineVariant" />
 
                         <!-- Auto-Clear Switch -->
                         <LinearLayout
@@ -404,10 +606,20 @@
                             android:gravity="center_vertical"
                             android:orientation="horizontal">
 
+                            <!-- Squircle Orange Icon -->
+                            <ImageView
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_squircle_orange"
+                                android:padding="9dp"
+                                android:src="@drawable/ic_timer"
+                                app:tint="@color/status_warning" />
+
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_marginEnd="16dp"
+                                android:layout_marginStart="14dp"
+                                android:layout_marginEnd="12dp"
                                 android:layout_weight="1"
                                 android:orientation="vertical">
 
@@ -415,7 +627,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="@string/setting_auto_clear_title"
-                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                                     android:textStyle="bold" />
 
                                 <TextView
@@ -440,6 +652,7 @@
                             android:id="@+id/layoutTimeoutSelection"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginStart="54dp"
                             android:layout_marginTop="12dp"
                             android:orientation="vertical">
 
@@ -489,25 +702,91 @@
 
                         </LinearLayout>
 
+                        <com.google.android.material.divider.MaterialDivider
+                            android:id="@+id/dividerSamsungRow"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="54dp"
+                            android:layout_marginVertical="14dp"
+                            android:visibility="gone"
+                            app:dividerColor="?attr/colorOutlineVariant"
+                            tools:visibility="visible" />
+
+                        <!-- Samsung Clipboard Setting Row (Shown on Samsung devices) -->
+                        <LinearLayout
+                            android:id="@+id/layoutSamsungClipboardRow"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingVertical="4dp"
+                            android:visibility="gone"
+                            tools:visibility="visible">
+
+                            <ImageView
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_squircle_orange"
+                                android:padding="9dp"
+                                android:src="@drawable/ic_timer"
+                                app:tint="@color/status_warning" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="14dp"
+                                android:layout_marginEnd="12dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Samsung Keyboard History"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="Configure Samsung Keyboard clipboard privacy"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            </LinearLayout>
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@drawable/ic_visibility"
+                                app:tint="?attr/colorOnSurfaceVariant" />
+
+                        </LinearLayout>
+
                     </LinearLayout>
 
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Guide / Workflow Info Card -->
+                <!-- Modern KeePass2Android Workflow Timeline Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="24dp"
-                    app:cardCornerRadius="20dp"
+                    android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainerLow"
+                    app:cardCornerRadius="28dp"
                     app:cardElevation="0dp"
-                    app:strokeColor="?attr/colorSurfaceVariant"
+                    app:strokeColor="?attr/colorOutlineVariant"
                     app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="20dp">
+                        android:padding="22dp">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -517,14 +796,181 @@
                             android:textColor="?attr/colorPrimary"
                             android:textStyle="bold" />
 
-                        <TextView
-                            android:layout_width="wrap_content"
+                        <!-- Step 1 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:lineSpacingExtra="4dp"
-                            android:text="@string/guide_body"
-                            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
+                            android:layout_marginTop="16dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@drawable/bg_step_badge"
+                                android:gravity="center"
+                                android:text="1"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                                android:textColor="?attr/colorPrimary"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="14dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Store Master Passphrase"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="Sealed into device hardware-backed Android Keystore"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <!-- Step 2 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@drawable/bg_step_badge"
+                                android:gravity="center"
+                                android:text="2"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                                android:textColor="?attr/colorPrimary"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="14dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Database &amp; Account Protection"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="Protect accounts and vaults with hardware biometric keys"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <!-- Step 3 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@drawable/bg_step_badge"
+                                android:gravity="center"
+                                android:text="3"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                                android:textColor="?attr/colorPrimary"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="14dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Biometric Unlock &amp; Paste"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="Tap fingerprint, auto-minimize, and paste directly"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <!-- Step 4 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@drawable/bg_step_badge"
+                                android:gravity="center"
+                                android:text="4"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                                android:textColor="?attr/colorPrimary"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="14dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Automatic Clipboard Erasure"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="Passphrase erased after chosen timeout leaves no trail"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
 
                     </LinearLayout>
 
@@ -606,10 +1052,11 @@
                     android:id="@+id/cardEmptyLocker"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="32dp"
-                    app:cardCornerRadius="20dp"
+                    android:layout_marginTop="28dp"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainer"
+                    app:cardCornerRadius="28dp"
                     app:cardElevation="0dp"
-                    app:strokeColor="?attr/colorSurfaceVariant"
+                    app:strokeColor="?attr/colorOutlineVariant"
                     app:strokeWidth="1dp">
 
                     <LinearLayout
@@ -619,18 +1066,24 @@
                         android:orientation="vertical"
                         android:padding="32dp">
 
-                        <ImageView
-                            android:layout_width="64dp"
-                            android:layout_height="64dp"
-                            android:background="@drawable/bg_icon_circle"
-                            android:padding="16dp"
-                            android:src="@drawable/ic_folder_lock"
-                            app:tint="?attr/colorPrimary" />
+                        <FrameLayout
+                            android:layout_width="80dp"
+                            android:layout_height="80dp"
+                            android:background="@drawable/bg_hero_ring">
+
+                            <ImageView
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_folder_lock"
+                                app:tint="?attr/colorPrimary" />
+
+                        </FrameLayout>
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="16dp"
+                            android:layout_marginTop="20dp"
                             android:text="Your Secure Locker is Empty"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                             android:textStyle="bold" />
@@ -638,7 +1091,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
+                            android:layout_marginTop="8dp"
                             android:gravity="center"
                             android:text="Store encrypted photos and PDFs of your driver\'s license, passport, insurance cards, and private records."
                             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
@@ -648,9 +1101,10 @@
                             android:id="@+id/btnAddFirstDocument"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="20dp"
+                            android:layout_height="52dp"
+                            android:layout_marginTop="22dp"
                             android:text="Add First Document"
+                            app:cornerRadius="26dp"
                             app:icon="@drawable/ic_add" />
 
                     </LinearLayout>
@@ -664,31 +1118,35 @@
                     android:layout_height="match_parent"
                     android:layout_marginTop="12dp"
                     android:clipToPadding="false"
-                    android:paddingBottom="80dp" />
+                    android:paddingBottom="96dp" />
 
             </LinearLayout>
-
-            <!-- FAB to add document -->
-            <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
-                android:id="@+id/fabAddDocument"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom|end"
-                android:layout_margin="16dp"
-                android:text="Add Document"
-                app:icon="@drawable/ic_add" />
 
         </FrameLayout>
 
     </FrameLayout>
 
-    <!-- Bottom Navigation Bar -->
+    <!-- FAB to add document (anchored properly above bottom nav) -->
+    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+        android:id="@+id/fabAddDocument"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="96dp"
+        android:text="Add Document"
+        android:visibility="gone"
+        app:elevation="4dp"
+        app:icon="@drawable/ic_add"
+        tools:visibility="visible" />
+
+    <!-- Modern Bottom Navigation Bar -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="?android:attr/colorBackground"
+        android:background="?attr/colorSurfaceContainer"
         app:elevation="8dp"
         app:menu="@menu/bottom_nav_menu" />
 

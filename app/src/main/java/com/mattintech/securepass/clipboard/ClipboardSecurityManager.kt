@@ -44,14 +44,21 @@ object ClipboardSecurityManager {
         manager.createNotificationChannel(channel)
     }
 
+    /**
+     * Copies sensitive text to the clipboard with:
+     * 1. EXTRA_IS_SENSITIVE flag on API 33+ (prevents clipboard previews / keyboard caching)
+     * 2. Auto-clear timer via foreground service
+     * 3. Live countdown state for UI banners
+     */
     fun copyToClipboard(
         context: Context,
         passphrase: String,
-        timeoutSeconds: Int = 10
+        timeoutSeconds: Int = 10,
+        label: String = "SecurePass"
     ) {
         val appContext = context.applicationContext
         val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("SecurePassphrase", passphrase)
+        val clip = ClipData.newPlainText(label, passphrase)
 
         // Mark as sensitive on Android 13+ (API 33+) so keyboard suggestions & preview overlay hide it
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -63,7 +70,7 @@ object ClipboardSecurityManager {
         try {
             clipboard.setPrimaryClip(clip)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to set primary clip", e)
+            Log.e(TAG, "Error setting primary clip", e)
             return
         }
 
@@ -79,37 +86,32 @@ object ClipboardSecurityManager {
         _countdownTotal.value = timeoutSeconds
         _countdownRemaining.value = timeoutSeconds
 
-        // Start Foreground Service to guarantee execution and prevent Samsung Freecess from suspending the timer
+        // Start Foreground Service to guarantee timeout execution
         ClipboardCountdownService.start(appContext, timeoutSeconds)
     }
 
     /**
-     * Executes the actual clipboard wipe:
-     * Overwrites with an empty ClipData first (which forces keyboards like Gboard / Samsung Keyboard
-     * to drop the cached password), then calls clearPrimaryClip() to erase the primary clip.
+     * Single canonical clipboard clear routine:
+     * Directly invokes clearPrimaryClip() to avoid spurious "Copied to clipboard" toasts
+     * that occur when overwriting with empty text on One UI.
      */
     fun doExecuteClear(context: Context) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return
         try {
-            val emptyClip = ClipData.newPlainText("", "")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                emptyClip.description.extras = PersistableBundle().apply {
-                    putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
-                }
-            }
-            clipboard.setPrimaryClip(emptyClip)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 clipboard.clearPrimaryClip()
+            } else {
+                clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not clear clipboard (may be background restricted): ${e.message}")
+            Log.w(TAG, "Could not clear clipboard: ${e.message}")
         }
     }
 
     /**
      * Checks if the active clipboard copy has exceeded its timeout duration,
-     * and if so, performs a full clear sequence immediately while the caller has foreground focus.
+     * and if so, performs a full clear sequence immediately.
      */
     fun checkAndClearIfExpired(context: Context) {
         val prefs = PreferencesManager(context)
@@ -121,6 +123,9 @@ object ClipboardSecurityManager {
         }
     }
 
+    /**
+     * Clears clipboard, stops countdown service, resets preferences, and clears remaining count.
+     */
     fun clearClipboard(context: Context) {
         _countdownRemaining.value = null
         val appContext = context.applicationContext

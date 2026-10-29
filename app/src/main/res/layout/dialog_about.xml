@@ -22,7 +22,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:lineSpacingExtra="4dp"
-        android:text="• Hardware Keystore: Your passphrase is encrypted with AES-256-GCM. The encryption key is stored in your device's Secure Element/TEE and can only be unlocked with your enrolled biometric fingerprint.\n\n• Sensitive Clipboard: Copied passphrases are tagged with Android's sensitive content flag so clipboard previews and history won't expose your password.\n\n• Auto-Clear: The clipboard is wiped automatically after 10 seconds (or your customized timeout).\n\n• Quick Settings Tile: Add the 'SecurePass' tile to your Android notification shade to unlock and copy without leaving KeePass2Android."
+        android:text="• Hardware Keystore: Your passphrase is encrypted with AES-256-GCM. The encryption key is stored in your device's Secure Element/TEE and can only be unlocked with your enrolled biometric fingerprint.\n\n• Sensitive Clipboard: Copied passphrases are tagged with Android's sensitive content flag so clipboard previews and history won't expose your password.\n\n• Auto-Clear: The clipboard is wiped automatically after 10 seconds (or your customized timeout).\n\n• Quick Settings Tile: Add the 'SecurePass' tile to your Android notification shade to unlock and copy without leaving your active app.\n\n• Samsung Galaxy Clipboard: Samsung Keyboard retains its own clipboard history tray. For maximum privacy, disable clipboard history in Settings → General Management → Samsung Keyboard Settings."
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
         android:textColor="?attr/colorOnSurfaceVariant" />
 
