@@ -728,21 +728,21 @@ class MainActivity : AppCompatActivity() {
             is BiometricAuthHelper.SecurityLevel.Biometric -> {
                 binding.tvSecurityPill.setBackgroundResource(R.drawable.bg_status_pill)
                 binding.tvSecurityPill.setTextColor(ContextCompat.getColor(this, R.color.status_protected))
-                binding.tvSecurityPill.text = "🔒 BIOMETRIC ENCRYPTED"
+                binding.tvSecurityPill.text = "BIOMETRIC ENCRYPTED"
                 binding.tvSecuritySubtitle.text = "Hardware Keystore (TEE)"
                 binding.tvSecurityPill.isClickable = false
             }
             is BiometricAuthHelper.SecurityLevel.DeviceCredential -> {
                 binding.tvSecurityPill.setBackgroundResource(R.drawable.bg_status_pill)
                 binding.tvSecurityPill.setTextColor(ContextCompat.getColor(this, R.color.primary))
-                binding.tvSecurityPill.text = "🔑 PIN / PASSWORD PROTECTED"
+                binding.tvSecurityPill.text = "PIN / PASSWORD PROTECTED"
                 binding.tvSecuritySubtitle.text = "Device Credential"
                 binding.tvSecurityPill.isClickable = false
             }
             else -> {
                 binding.tvSecurityPill.setBackgroundResource(R.drawable.bg_status_warning_pill)
                 binding.tvSecurityPill.setTextColor(ContextCompat.getColor(this, R.color.status_warning))
-                binding.tvSecurityPill.text = "⚠️ UNPROTECTED DEVICE"
+                binding.tvSecurityPill.text = "UNPROTECTED DEVICE"
                 binding.tvSecuritySubtitle.text = "No Screen Lock Set"
                 binding.tvSecurityPill.isClickable = true
                 binding.tvSecurityPill.setOnClickListener {
