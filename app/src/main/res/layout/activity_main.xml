@@ -982,7 +982,7 @@
 
         </androidx.core.widget.NestedScrollView>
 
-        <!-- TAB 2: SECURE LOCKER (IDs, Passports, Private Documents) -->
+        <!-- SECURE LOCKER TAB (IDs, Passports, Private Documents) - opened by default -->
         <FrameLayout
             android:id="@+id/layoutSecureLocker"
             android:layout_width="match_parent"
@@ -990,7 +990,63 @@
             android:visibility="gone"
             tools:visibility="visible">
 
+            <!-- Shown while the locker is locked -->
             <LinearLayout
+                android:id="@+id/layoutLockerLocked"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="32dp"
+                android:paddingBottom="96dp"
+                android:visibility="gone">
+
+                <FrameLayout
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:background="@drawable/bg_hero_ring">
+
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_folder_lock"
+                        app:tint="?attr/colorPrimary" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="Locker is locked"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Unlock with your fingerprint or device PIN to see your documents."
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnUnlockLocker"
+                    style="@style/Widget.Material3.Button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="24dp"
+                    android:text="Unlock"
+                    app:cornerRadius="26dp"
+                    app:icon="@drawable/ic_fingerprint" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/layoutLockerContent"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="vertical"

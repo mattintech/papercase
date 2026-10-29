@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val ACTION_TRIGGER_COPY = "com.mattintech.securepass.ACTION_TRIGGER_COPY"
+        private const val STATE_SELECTED_TAB = "selected_tab"
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -161,8 +162,35 @@ class MainActivity : AppCompatActivity() {
         observeClipboardState()
         checkNotificationPermission()
 
+        selectInitialTab(savedInstanceState)
         if (savedInstanceState == null) {
             handleIncomingIntent()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_SELECTED_TAB, binding.bottomNavigation.selectedItemId)
+    }
+
+    /**
+     * The locker is the main screen. The passphrase tab opens first only when the launch is about
+     * the passphrase (quick tile, or Auto-Copy on launch).
+     */
+    private fun selectInitialTab(savedInstanceState: Bundle?) {
+        val tab = savedInstanceState?.getInt(STATE_SELECTED_TAB)?.takeIf { it != 0 } ?: run {
+            val wantsPassphrase = intent?.action == ACTION_TRIGGER_COPY ||
+                (prefs.hasStoredPassphrase && prefs.isAutoCopyEnabled)
+            if (wantsPassphrase) R.id.nav_passphrase else R.id.nav_locker
+        }
+        // Check the item directly so the selection listener (which prompts) doesn't fire
+        binding.bottomNavigation.menu.findItem(tab)?.isChecked = true
+        if (tab == R.id.nav_passphrase) {
+            showPassphraseVaultTab()
+        } else {
+            // Prompt on a fresh launch, but not when opened by a transfer link (that shows its own dialog)
+            val openedByLink = intent?.action == Intent.ACTION_VIEW && intent?.data != null
+            showLockerTab(promptIfLocked = savedInstanceState == null && !openedByLink)
         }
     }
 
@@ -172,11 +200,7 @@ class MainActivity : AppCompatActivity() {
         updateVaultStatusUI()
 
         if (!SessionManager.isSessionValid(getSessionTimeoutMs())) {
-            isLockerUnlocked = false
-            if (binding.layoutSecureLocker.visibility == View.VISIBLE) {
-                showPassphraseVaultTab()
-                binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
-            }
+            lockLockerInPlace()
         } else {
             isLockerUnlocked = true
             if (binding.layoutSecureLocker.visibility == View.VISIBLE) {
@@ -435,10 +459,12 @@ class MainActivity : AppCompatActivity() {
         // Lock Locker Immediately Button
         binding.btnLockLocker.setOnClickListener {
             SessionManager.lock()
-            isLockerUnlocked = false
-            showPassphraseVaultTab()
-            binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
-            Toast.makeText(this, "Secure Locker locked", Toast.LENGTH_SHORT).show()
+            lockLockerInPlace()
+            Toast.makeText(this, "Locker locked", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnUnlockLocker.setOnClickListener {
+            promptLockerUnlock()
         }
 
         // Vault Transfer (Export / Import) Button
@@ -480,7 +506,7 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_locker -> {
-                    checkAndShowLockerTab()
+                    showLockerTab(promptIfLocked = true)
                     true
                 }
                 else -> false
@@ -541,22 +567,48 @@ class MainActivity : AppCompatActivity() {
         binding.btnVaultTransfer.visibility = View.GONE
     }
 
-    private fun checkAndShowLockerTab() {
+    /** Shows the locker tab: the documents if unlocked, otherwise the locked screen. */
+    private fun showLockerTab(promptIfLocked: Boolean) {
+        binding.nestedScrollView.visibility = View.GONE
+        binding.layoutSecureLocker.visibility = View.VISIBLE
+        binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
+        binding.tvToolbarTitle.text = "Secure Locker"
+
         if (isLockerUnlocked || SessionManager.isSessionValid(getSessionTimeoutMs())) {
             isLockerUnlocked = true
             displayLockerTab()
             return
         }
 
-        // Biometric / Device PIN challenge to unlock personal vault (OneDrive Personal Vault style)
-        val status = BiometricAuthHelper.checkBiometricAvailability(this)
-        if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
+        // No biometric / screen lock on this device: nothing to unlock with
+        if (BiometricAuthHelper.checkBiometricAvailability(this) !is BiometricAuthHelper.BiometricStatus.Ready) {
             SessionManager.markAuthenticated()
             isLockerUnlocked = true
             displayLockerTab()
             return
         }
 
+        showLockedLocker()
+        if (promptIfLocked) promptLockerUnlock()
+    }
+
+    private fun showLockedLocker() {
+        binding.layoutLockerContent.visibility = View.GONE
+        binding.layoutLockerLocked.visibility = View.VISIBLE
+        binding.fabAddDocument.hide()
+        binding.btnLockLocker.visibility = View.GONE
+        binding.btnVaultTransfer.visibility = View.GONE
+    }
+
+    /** Locks the locker and, if it's on screen, swaps the documents for the locked screen. */
+    private fun lockLockerInPlace() {
+        isLockerUnlocked = false
+        allDocuments = emptyList()
+        documentsAdapter.submitList(emptyList())
+        if (binding.layoutSecureLocker.visibility == View.VISIBLE) showLockedLocker()
+    }
+
+    private fun promptLockerUnlock() {
         BiometricAuthHelper.promptGeneralUnlock(
             activity = this,
             title = "Unlock Secure Locker",
@@ -564,11 +616,10 @@ class MainActivity : AppCompatActivity() {
             onSuccess = {
                 SessionManager.markAuthenticated()
                 isLockerUnlocked = true
-                displayLockerTab()
+                if (binding.layoutSecureLocker.visibility == View.VISIBLE) displayLockerTab()
             },
             onError = { _, _ ->
-                // Revert tab back to passphrase
-                binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+                // Stay on the locked screen; the Unlock button tries again
             }
         )
     }
@@ -576,6 +627,8 @@ class MainActivity : AppCompatActivity() {
     private fun displayLockerTab() {
         binding.nestedScrollView.visibility = View.GONE
         binding.layoutSecureLocker.visibility = View.VISIBLE
+        binding.layoutLockerLocked.visibility = View.GONE
+        binding.layoutLockerContent.visibility = View.VISIBLE
         binding.fabAddDocument.show()
         binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
         binding.tvToolbarTitle.text = "Secure Locker"
@@ -619,10 +672,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleLockerLocked() {
-        isLockerUnlocked = false
-        showPassphraseVaultTab()
-        binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
-        Toast.makeText(this, "Secure Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+        lockLockerInPlace()
+        Toast.makeText(this, "Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
     }
 
     private fun showLockerKeyLostDialog() {
@@ -641,8 +692,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Not Now") { _, _ ->
-                showPassphraseVaultTab()
-                binding.bottomNavigation.selectedItemId = R.id.nav_passphrase
+                lockLockerInPlace()
             }
             .show()
     }

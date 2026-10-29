@@ -45,7 +45,7 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("samsung_clipboard_warning_dismissed", value).apply()
 
     var isAutoCopyEnabled: Boolean
-        get() = prefs.getBoolean(KEY_AUTO_COPY, true)
+        get() = prefs.getBoolean(KEY_AUTO_COPY, false)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_COPY, value).apply()
 
     var isAutoMinimizeEnabled: Boolean
