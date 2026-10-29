@@ -74,18 +74,18 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
-            <!-- Blue Squircle Icon -->
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@drawable/bg_squircle_blue">
+                android:background="@drawable/bg_sync_icon_tile">
 
                 <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_share"
-                    app:tint="?attr/colorPrimary" />
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_sync_send"
+                    app:tint="?attr/colorOnSecondaryContainer" />
 
             </FrameLayout>
 
@@ -169,18 +169,18 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
-            <!-- Purple Squircle Icon -->
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@drawable/bg_squircle_purple">
+                android:background="@drawable/bg_sync_icon_tile">
 
                 <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_qr_code_scanner"
-                    app:tint="?attr/colorTertiary" />
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_sync_receive"
+                    app:tint="?attr/colorOnSecondaryContainer" />
 
             </FrameLayout>
 
@@ -215,7 +215,7 @@
                         android:paddingHorizontal="8dp"
                         android:paddingVertical="2dp"
                         android:text="CAMERA"
-                        android:textColor="?attr/colorTertiary"
+                        android:textColor="?attr/colorPrimary"
                         android:textSize="10sp"
                         android:textStyle="bold" />
 
@@ -277,18 +277,18 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
-            <!-- Orange Squircle Icon -->
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@drawable/bg_squircle_orange">
+                android:background="@drawable/bg_sync_icon_tile">
 
                 <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_folder_lock"
-                    app:tint="@color/status_warning" />
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_backup_export"
+                    app:tint="?attr/colorOnSecondaryContainer" />
 
             </FrameLayout>
 
@@ -352,18 +352,18 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
-            <!-- Green Squircle Icon -->
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@drawable/bg_squircle_green">
+                android:background="@drawable/bg_sync_icon_tile">
 
                 <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_description"
-                    app:tint="@color/status_protected" />
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_backup_import"
+                    app:tint="?attr/colorOnSecondaryContainer" />
 
             </FrameLayout>
 
