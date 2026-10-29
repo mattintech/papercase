@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.mattintech.securepass"
+    namespace = "com.mattintech.papercase"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.mattintech.securepass"
+        applicationId = "com.mattintech.papercase"
         minSdk = 31
         targetSdk = 36
         versionCode = 1
