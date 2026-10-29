@@ -26,6 +26,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.journeyapps.barcodescanner.ScanContract
@@ -39,6 +40,7 @@ import com.mattintech.securepass.databinding.ActivityMainBinding
 import com.mattintech.securepass.databinding.DialogP2pSenderBinding
 import com.mattintech.securepass.databinding.DialogSetPassphraseBinding
 import com.mattintech.securepass.databinding.DialogSyncConflictsBinding
+import com.mattintech.securepass.databinding.DialogVaultTransferBottomSheetBinding
 import com.mattintech.securepass.databinding.DialogViewPassphraseBinding
 import com.mattintech.securepass.locker.model.DocumentType
 import com.mattintech.securepass.locker.model.SecureDocument
@@ -784,25 +786,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showVaultTransferOptions() {
-        val options = arrayOf(
-            "📡 Send to Nearby Device (Local Wi-Fi P2P)\n    Direct device-to-device stream over Wi-Fi",
-            "📥 Receive from Nearby Device (Scan QR)\n    Scan sender's QR code to pull & sync vault",
-            "📤 Export Vault to File (.spvault)\n    Save encrypted backup file or share",
-            "📂 Import Vault from File (.spvault)\n    Restore or merge a .spvault backup file"
-        )
+        val sheetBinding = DialogVaultTransferBottomSheetBinding.inflate(layoutInflater)
+        val bottomSheet = BottomSheetDialog(this)
+        bottomSheet.setContentView(sheetBinding.root)
+        bottomSheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
 
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Vault Transfer & Sync")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> startP2pSendFlow()
-                    1 -> checkCameraAndLaunchScanner()
-                    2 -> promptBiometricForExport()
-                    3 -> promptBiometricForImport()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        sheetBinding.cardSendP2p.setOnClickListener {
+            bottomSheet.dismiss()
+            startP2pSendFlow()
+        }
+
+        sheetBinding.cardReceiveP2p.setOnClickListener {
+            bottomSheet.dismiss()
+            checkCameraAndLaunchScanner()
+        }
+
+        sheetBinding.cardExportFile.setOnClickListener {
+            bottomSheet.dismiss()
+            promptBiometricForExport()
+        }
+
+        sheetBinding.cardImportFile.setOnClickListener {
+            bottomSheet.dismiss()
+            promptBiometricForImport()
+        }
+
+        bottomSheet.show()
     }
 
     // ==========================================
