@@ -21,6 +21,26 @@ import javax.crypto.SecretKey
 
 class SecureLockerRepository(private val context: Context) {
 
+    companion object {
+        private const val ORPHAN_MIN_AGE_MS = 60 * 60 * 1000L
+
+        fun deletionsToJson(deletions: Map<String, Long>): JSONArray = JSONArray().apply {
+            deletions.forEach { (id, at) -> put(JSONObject().put("id", id).put("deletedAt", at)) }
+        }
+
+        fun deletionsFromJson(array: JSONArray?): Map<String, Long> {
+            if (array == null) return emptyMap()
+            val map = mutableMapOf<String, Long>()
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("id")
+                val at = o.optLong("deletedAt", 0L)
+                if (id.isNotEmpty() && at > 0) map[id] = maxOf(at, map[id] ?: 0L)
+            }
+            return map
+        }
+    }
+
     private val lockerDir = File(context.filesDir, "locker").apply { if (!exists()) mkdirs() }
     private val filesDir = File(lockerDir, "files").apply { if (!exists()) mkdirs() }
     private val catalogFile = File(lockerDir, "catalog.enc")
@@ -51,12 +71,18 @@ class SecureLockerRepository(private val context: Context) {
     fun needsAuthBoundMigration(): Boolean =
         isDeviceSecure() && catalogKeyVersion() == LockerKeystoreHelper.KEY_VERSION_LEGACY
 
+    /** Documents plus deletion records (doc id -> deletedAt), so deletes can sync to other devices. */
+    private class Catalog(
+        val documents: MutableList<SecureDocument>,
+        val deleted: MutableMap<String, Long>
+    )
+
     /**
      * Reads the catalog. Throws on any failure so callers never mistake an unreadable locker for an
      * empty one (writing an "empty" list back would destroy every document).
      */
-    private fun loadCatalogStrict(): MutableList<SecureDocument> {
-        if (!catalogFile.exists()) return mutableListOf()
+    private fun loadCatalogStrict(): Catalog {
+        if (!catalogFile.exists()) return Catalog(mutableListOf(), mutableMapOf())
         val jsonWrapper = JSONObject(catalogFile.readText())
         val version = jsonWrapper.optInt("keyVersion", LockerKeystoreHelper.KEY_VERSION_LEGACY)
         val jsonString = LockerKeystoreHelper.decryptString(
@@ -64,21 +90,37 @@ class SecureLockerRepository(private val context: Context) {
             jsonWrapper.getString("iv"),
             version
         )
-        val array = JSONArray(jsonString)
+
+        // Older catalogs are a bare array of documents
+        val payload = jsonString.trimStart()
+        val array: JSONArray
+        val deleted = mutableMapOf<String, Long>()
+        if (payload.startsWith("[")) {
+            array = JSONArray(payload)
+        } else {
+            val obj = JSONObject(payload)
+            array = obj.getJSONArray("documents")
+            deleted.putAll(deletionsFromJson(obj.optJSONArray("deleted")))
+        }
+
         val list = mutableListOf<SecureDocument>()
         for (i in 0 until array.length()) {
             list.add(SecureDocument.fromJson(array.getJSONObject(i)))
         }
-        return list
+        return Catalog(list, deleted)
     }
 
     /** Atomically replaces the catalog, encrypted with [version]. */
-    private fun writeCatalog(list: List<SecureDocument>, version: Int) {
+    private fun writeCatalog(catalog: Catalog, version: Int) {
         ensureKey(version)
         val array = JSONArray()
-        list.forEach { array.put(it.toJson()) }
+        catalog.documents.forEach { array.put(it.toJson()) }
+        val payload = JSONObject().apply {
+            put("documents", array)
+            put("deleted", deletionsToJson(catalog.deleted))
+        }
 
-        val (cipherBase64, ivBase64) = LockerKeystoreHelper.encryptString(array.toString(), version)
+        val (cipherBase64, ivBase64) = LockerKeystoreHelper.encryptString(payload.toString(), version)
         val wrapper = JSONObject().apply {
             put("ciphertext", cipherBase64)
             put("iv", ivBase64)
@@ -98,7 +140,7 @@ class SecureLockerRepository(private val context: Context) {
      */
     suspend fun getAllDocuments(): List<SecureDocument> = withContext(Dispatchers.IO) {
         try {
-            loadCatalogStrict().sortedByDescending { it.updatedAt }
+            loadCatalogStrict().documents.sortedByDescending { it.updatedAt }
         } catch (e: LockerLockedException) {
             throw e
         } catch (e: LockerKeyInvalidatedException) {
@@ -115,7 +157,8 @@ class SecureLockerRepository(private val context: Context) {
 
     suspend fun saveDocument(doc: SecureDocument, preserveTimestamp: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
-            val currentList = loadCatalogStrict()
+            val catalog = loadCatalogStrict()
+            val currentList = catalog.documents
             val newUpdatedAt = if (preserveTimestamp) doc.updatedAt else System.currentTimeMillis()
             val docToSave = doc.copy(updatedAt = newUpdatedAt)
 
@@ -125,8 +168,9 @@ class SecureLockerRepository(private val context: Context) {
             } else {
                 currentList.add(0, docToSave)
             }
+            catalog.deleted.remove(doc.id)
 
-            writeCatalog(currentList, activeKeyVersion())
+            writeCatalog(catalog, activeKeyVersion())
             true
         } catch (e: LockerLockedException) {
             throw e
@@ -140,8 +184,8 @@ class SecureLockerRepository(private val context: Context) {
 
     suspend fun clearAll(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val currentList = loadCatalogStrict()
-            currentList.forEach { doc -> doc.attachments.forEach { deleteAttachmentFile(it) } }
+            val catalog = loadCatalogStrict()
+            catalog.documents.forEach { doc -> doc.attachments.forEach { deleteAttachmentFile(it) } }
             if (catalogFile.exists()) catalogFile.delete()
             true
         } catch (e: LockerLockedException) {
@@ -163,15 +207,21 @@ class SecureLockerRepository(private val context: Context) {
         LockerKeystoreHelper.deleteKey(LockerKeystoreHelper.KEY_VERSION_LEGACY)
     }
 
-    suspend fun deleteDocument(docId: String): Boolean = withContext(Dispatchers.IO) {
+    /** Deletes the document and remembers the deletion so it propagates on the next sync. */
+    suspend fun deleteDocument(
+        docId: String,
+        deletedAt: Long = System.currentTimeMillis()
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val currentList = loadCatalogStrict()
-            val doc = currentList.find { it.id == docId } ?: return@withContext false
+            val catalog = loadCatalogStrict()
+            val doc = catalog.documents.find { it.id == docId } ?: return@withContext false
 
+            catalog.documents.removeAll { it.id == docId }
+            catalog.deleted[docId] = maxOf(deletedAt, catalog.deleted[docId] ?: 0L)
+
+            writeCatalog(catalog, activeKeyVersion())
+            // Only remove the files once the catalog no longer points at them
             doc.attachments.forEach { deleteAttachmentFile(it) }
-            currentList.removeAll { it.id == docId }
-
-            writeCatalog(currentList, activeKeyVersion())
             true
         } catch (e: LockerLockedException) {
             throw e
@@ -181,6 +231,44 @@ class SecureLockerRepository(private val context: Context) {
             e.printStackTrace()
             false
         }
+    }
+
+    /** Deletion records: document id -> time it was deleted. */
+    suspend fun getDeletedDocuments(): Map<String, Long> = withContext(Dispatchers.IO) {
+        loadCatalogStrict().deleted.toMap()
+    }
+
+    /** Merges deletion records received from another device (keeps the latest time per id). */
+    suspend fun recordDeletions(deletions: Map<String, Long>) = withContext(Dispatchers.IO) {
+        if (deletions.isEmpty()) return@withContext
+        val catalog = loadCatalogStrict()
+        val existingIds = catalog.documents.mapTo(HashSet()) { it.id }
+        var changed = false
+        for ((id, deletedAt) in deletions) {
+            // A document that exists here was saved after that deletion, so it wins
+            if (id in existingIds) continue
+            if (deletedAt > (catalog.deleted[id] ?: 0L)) {
+                catalog.deleted[id] = deletedAt
+                changed = true
+            }
+        }
+        if (changed) writeCatalog(catalog, activeKeyVersion())
+    }
+
+    /**
+     * Removes encrypted files that no document references any more (e.g. left behind by an
+     * interrupted save). Recent files are kept because an editor may be about to reference them.
+     */
+    suspend fun pruneOrphanFiles(minAgeMs: Long = ORPHAN_MIN_AGE_MS): Int = withContext(Dispatchers.IO) {
+        val referenced = loadCatalogStrict().documents
+            .flatMap { it.attachments }
+            .mapTo(HashSet()) { it.encryptedFileName }
+        val cutoff = System.currentTimeMillis() - minAgeMs
+        var removed = 0
+        filesDir.listFiles()?.forEach { f ->
+            if (f.isFile && f.name !in referenced && f.lastModified() < cutoff && f.delete()) removed++
+        }
+        removed
     }
 
     fun deleteAttachmentFile(attachment: DocumentAttachment) {
@@ -265,7 +353,8 @@ class SecureLockerRepository(private val context: Context) {
         val legacy = LockerKeystoreHelper.KEY_VERSION_LEGACY
         val authBound = LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND
 
-        val documents = loadCatalogStrict()
+        val catalog = loadCatalogStrict()
+        val documents = catalog.documents
         // Safe to (re)create: nothing uses the auth-bound key until the catalog below is written
         LockerKeystoreHelper.generateKey(authBound)
 
@@ -292,7 +381,7 @@ class SecureLockerRepository(private val context: Context) {
                     )
                 })
             }
-            writeCatalog(migrated, authBound)
+            writeCatalog(Catalog(migrated.toMutableList(), catalog.deleted), authBound)
         } catch (e: Exception) {
             newFiles.forEach { it.delete() }
             throw e

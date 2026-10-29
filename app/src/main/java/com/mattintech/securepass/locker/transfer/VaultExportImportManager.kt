@@ -46,10 +46,19 @@ data class VaultConflictReport(
     val newDocuments: List<SecureDocument>,
     val identicalDocuments: List<SecureDocument>,
     val conflictingDocuments: List<ConflictPair>,
-    val fileMap: Map<String, ByteArray>
+    val fileMap: Map<String, ByteArray>,
+    /** Local documents the other device deleted (and that weren't edited here since). */
+    val deletedDocuments: List<SecureDocument> = emptyList(),
+    /** Incoming documents this device already deleted; skipped unless replacing everything. */
+    val previouslyDeletedDocuments: List<SecureDocument> = emptyList(),
+    /** The other device's deletion records (doc id -> deletedAt). */
+    val incomingDeletions: Map<String, Long> = emptyMap()
 ) {
     val hasConflicts: Boolean
         get() = conflictingDocuments.isNotEmpty()
+
+    val hasChanges: Boolean
+        get() = newDocuments.isNotEmpty() || conflictingDocuments.isNotEmpty() || deletedDocuments.isNotEmpty()
 }
 
 object VaultExportImportManager {
@@ -110,6 +119,7 @@ object VaultExportImportManager {
 
     private suspend fun buildArchive(repository: SecureLockerRepository): ByteArray {
         val documents = repository.getAllDocuments()
+        val deletions = repository.getDeletedDocuments()
 
         val zipByteStream = ByteArrayOutputStream()
         ZipOutputStream(zipByteStream).use { zipOut ->
@@ -121,6 +131,7 @@ object VaultExportImportManager {
                 put("exportedAt", System.currentTimeMillis())
                 put("documentCount", documents.size)
                 put("documents", docArray)
+                put("deleted", SecureLockerRepository.deletionsToJson(deletions))
             }
 
             zipOut.putNextEntry(ZipEntry("manifest.json"))
@@ -303,16 +314,24 @@ object VaultExportImportManager {
             incomingDocuments.add(SecureDocument.fromJson(docObj))
         }
 
+        val incomingDeletions = SecureLockerRepository.deletionsFromJson(manifestJson.optJSONArray("deleted"))
+
         val localDocuments = repository.getAllDocuments()
         val localMap = localDocuments.associateBy { it.id }
+        val localDeletions = repository.getDeletedDocuments()
 
         val newDocs = mutableListOf<SecureDocument>()
         val identicalDocs = mutableListOf<SecureDocument>()
         val conflictingDocs = mutableListOf<ConflictPair>()
+        val previouslyDeleted = mutableListOf<SecureDocument>()
 
         for (incoming in incomingDocuments) {
             val local = localMap[incoming.id]
-            if (local == null) {
+            val deletedHereAt = localDeletions[incoming.id]
+            if (local == null && deletedHereAt != null && deletedHereAt >= incoming.updatedAt) {
+                // Deleted here after the other device last changed it: don't bring it back
+                previouslyDeleted.add(incoming)
+            } else if (local == null) {
                 newDocs.add(incoming)
             } else if (local.updatedAt == incoming.updatedAt && local.title == incoming.title && local.documentNumber == incoming.documentNumber) {
                 identicalDocs.add(incoming)
@@ -321,12 +340,22 @@ object VaultExportImportManager {
             }
         }
 
+        // Deleted on the other device after the last local edit -> delete here too
+        val incomingIds = incomingDocuments.mapTo(HashSet()) { it.id }
+        val deletedDocs = localDocuments.filter { local ->
+            val deletedThereAt = incomingDeletions[local.id]
+            local.id !in incomingIds && deletedThereAt != null && deletedThereAt >= local.updatedAt
+        }
+
         return VaultConflictReport(
             totalIncoming = incomingDocuments.size,
             newDocuments = newDocs,
             identicalDocuments = identicalDocs,
             conflictingDocuments = conflictingDocs,
-            fileMap = fileMap
+            fileMap = fileMap,
+            deletedDocuments = deletedDocs,
+            previouslyDeletedDocuments = previouslyDeleted,
+            incomingDeletions = incomingDeletions
         )
     }
 
@@ -344,12 +373,14 @@ object VaultExportImportManager {
             ConflictResolutionStrategy.REPLACE_ALL -> {
                 repository.clearAll()
 
-                val allIncoming = report.newDocuments + report.identicalDocuments + report.conflictingDocuments.map { it.incoming }
+                val allIncoming = report.newDocuments + report.identicalDocuments +
+                    report.conflictingDocuments.map { it.incoming } + report.previouslyDeletedDocuments
                 for (doc in allIncoming) {
                     val savedDoc = saveDocWithAttachments(repository, doc, report.fileMap)
                     repository.saveDocument(savedDoc, preserveTimestamp = true)
                     processedCount++
                 }
+                repository.recordDeletions(report.incomingDeletions)
             }
 
             ConflictResolutionStrategy.SMART_MERGE -> {
@@ -363,15 +394,22 @@ object VaultExportImportManager {
                 // 2. Handle conflicts: keep the newer version
                 for (conflict in report.conflictingDocuments) {
                     if (conflict.incoming.updatedAt > conflict.local.updatedAt) {
-                        // Incoming is newer -> overwrite local
+                        // Incoming is newer -> overwrite local, then drop the replaced files
                         val savedDoc = saveDocWithAttachments(repository, conflict.incoming, report.fileMap)
-                        repository.saveDocument(savedDoc, preserveTimestamp = true)
+                        if (repository.saveDocument(savedDoc, preserveTimestamp = true)) {
+                            val stillUsed = savedDoc.attachments.mapTo(HashSet()) { it.encryptedFileName }
+                            conflict.local.attachments
+                                .filter { it.encryptedFileName !in stillUsed }
+                                .forEach { repository.deleteAttachmentFile(it) }
+                        }
                         processedCount++
                     } else {
                         // Local is newer or equal -> keep local as-is
                         // No changes needed
                     }
                 }
+
+                processedCount += applyDeletions(repository, report)
             }
 
             ConflictResolutionStrategy.KEEP_BOTH -> {
@@ -392,10 +430,25 @@ object VaultExportImportManager {
                     repository.saveDocument(savedDoc, preserveTimestamp = true)
                     processedCount++
                 }
+
+                processedCount += applyDeletions(repository, report)
             }
         }
 
+        // Sweep files left behind by earlier imports / interrupted saves
+        repository.pruneOrphanFiles()
+
         processedCount
+    }
+
+    private suspend fun applyDeletions(repository: SecureLockerRepository, report: VaultConflictReport): Int {
+        var count = 0
+        for (doc in report.deletedDocuments) {
+            val deletedAt = report.incomingDeletions[doc.id] ?: System.currentTimeMillis()
+            if (repository.deleteDocument(doc.id, deletedAt)) count++
+        }
+        repository.recordDeletions(report.incomingDeletions)
+        return count
     }
 
     private suspend fun saveDocWithAttachments(
