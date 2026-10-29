@@ -390,7 +390,7 @@
                             <ImageView
                                 android:layout_width="36dp"
                                 android:layout_height="36dp"
-                                android:src="@drawable/ic_camera"
+                                android:src="@drawable/ic_badge"
                                 app:tint="?attr/colorOnSurfaceVariant" />
 
                             <TextView
@@ -403,39 +403,31 @@
                                 android:textColor="?attr/colorOnSurfaceVariant" />
 
                             <LinearLayout
-                                android:layout_width="match_parent"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
-                                android:orientation="vertical">
+                                android:layout_marginTop="12dp"
+                                android:gravity="center"
+                                android:orientation="horizontal">
 
                                 <com.google.android.material.button.MaterialButton
                                     android:id="@+id/btnCaptureFrontCamera"
-                                    style="@style/Widget.Material3.Button.TonalButton"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="40dp"
-                                    android:insetTop="0dp"
-                                    android:insetBottom="0dp"
-                                    android:text="Camera"
-                                    android:textSize="12sp"
+                                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                                    android:layout_width="48dp"
+                                    android:layout_height="48dp"
+                                    android:layout_marginEnd="6dp"
+                                    android:contentDescription="Take Photo with Camera"
                                     app:icon="@drawable/ic_camera"
-                                    app:iconGravity="textStart"
-                                    app:iconSize="16dp"
-                                    app:iconTint="?attr/colorOnSecondaryContainer" />
+                                    app:iconSize="22dp" />
 
                                 <com.google.android.material.button.MaterialButton
                                     android:id="@+id/btnCaptureFrontGallery"
-                                    style="@style/Widget.Material3.Button.OutlinedButton"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="40dp"
-                                    android:layout_marginTop="6dp"
-                                    android:insetTop="0dp"
-                                    android:insetBottom="0dp"
-                                    android:text="Gallery"
-                                    android:textSize="12sp"
+                                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                                    android:layout_width="48dp"
+                                    android:layout_height="48dp"
+                                    android:layout_marginStart="6dp"
+                                    android:contentDescription="Choose from Gallery"
                                     app:icon="@drawable/ic_image"
-                                    app:iconGravity="textStart"
-                                    app:iconSize="16dp"
-                                    app:iconTint="?attr/colorPrimary" />
+                                    app:iconSize="22dp" />
 
                             </LinearLayout>
 
@@ -534,7 +526,7 @@
                             <ImageView
                                 android:layout_width="36dp"
                                 android:layout_height="36dp"
-                                android:src="@drawable/ic_camera"
+                                android:src="@drawable/ic_description"
                                 app:tint="?attr/colorOnSurfaceVariant" />
 
                             <TextView
@@ -547,39 +539,31 @@
                                 android:textColor="?attr/colorOnSurfaceVariant" />
 
                             <LinearLayout
-                                android:layout_width="match_parent"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
-                                android:orientation="vertical">
+                                android:layout_marginTop="12dp"
+                                android:gravity="center"
+                                android:orientation="horizontal">
 
                                 <com.google.android.material.button.MaterialButton
                                     android:id="@+id/btnCaptureBackCamera"
-                                    style="@style/Widget.Material3.Button.TonalButton"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="40dp"
-                                    android:insetTop="0dp"
-                                    android:insetBottom="0dp"
-                                    android:text="Camera"
-                                    android:textSize="12sp"
+                                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                                    android:layout_width="48dp"
+                                    android:layout_height="48dp"
+                                    android:layout_marginEnd="6dp"
+                                    android:contentDescription="Take Photo with Camera"
                                     app:icon="@drawable/ic_camera"
-                                    app:iconGravity="textStart"
-                                    app:iconSize="16dp"
-                                    app:iconTint="?attr/colorOnSecondaryContainer" />
+                                    app:iconSize="22dp" />
 
                                 <com.google.android.material.button.MaterialButton
                                     android:id="@+id/btnCaptureBackGallery"
-                                    style="@style/Widget.Material3.Button.OutlinedButton"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="40dp"
-                                    android:layout_marginTop="6dp"
-                                    android:insetTop="0dp"
-                                    android:insetBottom="0dp"
-                                    android:text="Gallery"
-                                    android:textSize="12sp"
+                                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                                    android:layout_width="48dp"
+                                    android:layout_height="48dp"
+                                    android:layout_marginStart="6dp"
+                                    android:contentDescription="Choose from Gallery"
                                     app:icon="@drawable/ic_image"
-                                    app:iconGravity="textStart"
-                                    app:iconSize="16dp"
-                                    app:iconTint="?attr/colorPrimary" />
+                                    app:iconSize="22dp" />
 
                             </LinearLayout>
 
