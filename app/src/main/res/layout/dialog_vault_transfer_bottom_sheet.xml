@@ -304,7 +304,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Export Backup File (.spvault)"
+                    android:text="Export Backup File (.kdbx)"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:textColor="?attr/colorOnSurface"
                     android:textStyle="bold" />
@@ -313,7 +313,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
-                    android:text="Save encrypted AES-256 container to storage or cloud"
+                    android:text="Encrypted KeePass database, opens in KeePassXC too"
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 
@@ -379,7 +379,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Import Backup File (.spvault)"
+                    android:text="Import Backup File"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:textColor="?attr/colorOnSurface"
                     android:textStyle="bold" />
@@ -388,7 +388,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
-                    android:text="Restore or merge a previously exported .spvault file"
+                    android:text="Restore or merge a .kdbx (or older .spvault) backup"
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 

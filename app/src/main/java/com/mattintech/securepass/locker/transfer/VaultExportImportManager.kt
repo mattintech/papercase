@@ -16,7 +16,6 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
-import java.security.SecureRandom
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -72,31 +71,38 @@ object VaultExportImportManager {
     private const val SALT_LENGTH = 16
 
     private fun deriveKey(token: String, salt: ByteArray): SecretKeySpec {
-        val cleanToken = token.trim().uppercase().replace(" ", "")
+        val cleanToken = KdbxBackupFormat.normalizeToken(token)
         val spec = PBEKeySpec(cleanToken.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         val keyBytes = factory.generateSecret(spec).encoded
         return SecretKeySpec(keyBytes, "AES")
     }
 
+    /** Writes a KeePass KDBX 4 backup that opens with [token] as its master password. */
     suspend fun exportVault(
         context: Context,
         repository: SecureLockerRepository,
         token: String
     ): File = withContext(Dispatchers.IO) {
-        val unencryptedZipBytes = buildArchive(repository)
+        val documents = repository.getAllDocuments()
+        val deletions = repository.getDeletedDocuments()
 
-        // Generate Salt & Derive Transfer Key
-        val salt = ByteArray(SALT_LENGTH)
-        SecureRandom().nextBytes(salt)
-        val transferKey = deriveKey(token, salt)
-
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, transferKey)
-        val cipherBytes = cipher.doFinal(unencryptedZipBytes)
-
-        // Container: [MAGIC(4)][VERSION(1)][SALT(16)][IV_LEN(1)][IV(12)][PAYLOAD_LEN(4)][PAYLOAD]
-        writeContainer(context, FORMAT_VERSION, salt, cipher.iv, cipherBytes)
+        val exportDir = File(context.cacheDir, "vault_exports").apply { if (!exists()) mkdirs() }
+        val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val exportFile = File(exportDir, "SecurePass_Backup_$dateStr.kdbx")
+        try {
+            FileOutputStream(exportFile).use { out ->
+                KdbxBackupFormat.write(out, token, documents, deletions) { doc, att ->
+                    // Password-protected documents stay encrypted with their own key
+                    if (doc.isPasswordProtected) repository.readStoredAttachmentBytes(att)
+                    else repository.readAttachmentBytes(att)
+                }
+            }
+        } catch (e: Exception) {
+            exportFile.delete()
+            throw e
+        }
+        exportFile
     }
 
     /**
@@ -114,7 +120,7 @@ object VaultExportImportManager {
         val cipherBytes = cipher.doFinal(unencryptedZipBytes)
 
         // Container: [MAGIC(4)][VERSION(1)][IV_LEN(1)][IV(12)][PAYLOAD_LEN(4)][PAYLOAD]
-        writeContainer(context, FORMAT_VERSION_RAW_KEY, null, cipher.iv, cipherBytes)
+        writeContainer(context, FORMAT_VERSION_RAW_KEY, cipher.iv, cipherBytes)
     }
 
     private suspend fun buildArchive(repository: SecureLockerRepository): ByteArray {
@@ -161,7 +167,6 @@ object VaultExportImportManager {
     private fun writeContainer(
         context: Context,
         version: Int,
-        salt: ByteArray?,
         iv: ByteArray,
         cipherBytes: ByteArray
     ): File {
@@ -172,7 +177,6 @@ object VaultExportImportManager {
         DataOutputStream(FileOutputStream(exportFile)).use { out ->
             out.writeInt(MAGIC_HEADER)
             out.writeByte(version)
-            if (salt != null) out.write(salt)
             out.writeByte(iv.size)
             out.write(iv)
             out.writeInt(cipherBytes.size)
@@ -240,6 +244,12 @@ object VaultExportImportManager {
         fileBytes: ByteArray,
         token: String
     ): VaultConflictReport = withContext(Dispatchers.IO) {
+        if (KdbxBackupFormat.isKdbx(fileBytes)) {
+            val contents = KdbxBackupFormat.read(ByteArrayInputStream(fileBytes), token)
+            return@withContext analyzeIncoming(repository, contents.documents, contents.files, contents.deletions)
+        }
+
+        // Legacy .spvault backups written by earlier versions
         if (fileBytes.size < 30) {
             throw IllegalArgumentException("Corrupted or invalid vault file")
         }
@@ -315,7 +325,15 @@ object VaultExportImportManager {
         }
 
         val incomingDeletions = SecureLockerRepository.deletionsFromJson(manifestJson.optJSONArray("deleted"))
+        return analyzeIncoming(repository, incomingDocuments, fileMap, incomingDeletions)
+    }
 
+    private suspend fun analyzeIncoming(
+        repository: SecureLockerRepository,
+        incomingDocuments: List<SecureDocument>,
+        fileMap: Map<String, ByteArray>,
+        incomingDeletions: Map<String, Long>
+    ): VaultConflictReport {
         val localDocuments = repository.getAllDocuments()
         val localMap = localDocuments.associateBy { it.id }
         val localDeletions = repository.getDeletedDocuments()

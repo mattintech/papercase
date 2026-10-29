@@ -1090,7 +1090,7 @@ class MainActivity : AppCompatActivity() {
 
                 val dialogBinding = DialogP2pSenderBinding.inflate(layoutInflater)
                 val dialog = MaterialAlertDialogBuilder(this@MainActivity)
-                    .setTitle("📡 Send Vault to Nearby Device")
+                    .setTitle("Send Vault to Nearby Device")
                     .setView(dialogBinding.root)
                     .setNegativeButton("Cancel") { d, _ ->
                         activeP2pServer?.stop()
@@ -1133,7 +1133,7 @@ class MainActivity : AppCompatActivity() {
                     },
                     onError = { error ->
                         runOnUiThread {
-                            dialogBinding.tvP2pStatus.text = "⚠️ $error"
+                            dialogBinding.tvP2pStatus.text = error
                         }
                     }
                 )
@@ -1328,7 +1328,7 @@ class MainActivity : AppCompatActivity() {
             "Conflicting Documents:\n$conflictDocTitles$moreText"
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("⚠️ Sync Conflicts Detected")
+            .setTitle("Sync Conflicts Detected")
             .setView(dialogBinding.root)
             .setPositiveButton("Apply") { _, _ ->
                 val strategy = when {
@@ -1346,12 +1346,13 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val count = VaultExportImportManager.applyVaultImport(lockerRepository, report, strategy)
-                val strategyMsg = when (strategy) {
-                    ConflictResolutionStrategy.SMART_MERGE -> "Merged (kept newest)"
-                    ConflictResolutionStrategy.KEEP_BOTH -> "Imported with copies"
-                    ConflictResolutionStrategy.REPLACE_ALL -> "Replaced locker with backup"
+                val noun = if (count == 1) "document" else "documents"
+                val msg = when (strategy) {
+                    ConflictResolutionStrategy.SMART_MERGE -> "Import complete: $count $noun updated"
+                    ConflictResolutionStrategy.KEEP_BOTH -> "Import complete: $count $noun added or copied"
+                    ConflictResolutionStrategy.REPLACE_ALL -> "Locker replaced: $count $noun restored"
                 }
-                Toast.makeText(this@MainActivity, "✅ Successfully processed $count documents ($strategyMsg)", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 loadSecureLockerDocuments()
             } catch (e: Exception) {
                 MaterialAlertDialogBuilder(this@MainActivity)
@@ -1404,7 +1405,7 @@ class MainActivity : AppCompatActivity() {
                     putExtra(Intent.EXTRA_STREAM, fileUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(shareIntent, "Share Encrypted Vault Backup (.spvault)"))
+                startActivity(Intent.createChooser(shareIntent, "Share Encrypted Vault Backup (.kdbx)"))
 
                 showExportTokenAndQrDialog(token, qrBitmap)
             } catch (e: Exception) {
@@ -1441,7 +1442,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(tokenTextView)
 
         val helpTextView = android.widget.TextView(this).apply {
-            text = "1. Transfer the .spvault file to your other device.\n2. In SecurePass on the other device, tap Import Vault and scan this QR code or enter the token above."
+            text = "1. Transfer the .kdbx file to your other device.\n2. In SecurePass on the other device, tap Import Backup File and scan this QR code or enter the token above.\n\nThe backup is a standard KeePass database: KeePassXC or KeePassDX can also open it with this token as the password. Keep the token somewhere safe, separate from the file."
             textSize = 13f
             gravity = android.view.Gravity.CENTER
         }
@@ -1505,7 +1506,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(tokenInput)
 
         val btnScanQr = com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialButtonTonalStyle).apply {
-            text = "📷 Scan QR Code Image"
+            text = "Scan QR Code Image"
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
