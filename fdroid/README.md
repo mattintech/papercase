@@ -6,7 +6,7 @@ F-Droid builds Papercase from source and signs it with its own key. The store li
 
 ## First submission
 
-1. Tag the release on `main`, for example `v1.0.0` (the release workflow does the rest on GitHub).
+1. Tag the release on `main`, for example `v1.1.1` (the release workflow does the rest on GitHub).
 2. Fork https://gitlab.com/fdroid/fdroiddata and add
    [`com.mattintech.papercase.yml`](com.mattintech.papercase.yml) as
    `metadata/com.mattintech.papercase.yml`.
@@ -42,7 +42,8 @@ Steps:
    ```
 4. The release workflow checks the tag is on `main`, builds the signed APK and app bundle,
    attaches the APK to a GitHub release, and uploads the bundle to the Play track in the
-   `PLAY_TRACK` variable (default `internal`) as a draft (`PLAY_RELEASE_STATUS`).
+   `PLAY_TRACK` variable (default `internal`), with the status in `PLAY_RELEASE_STATUS`
+   (default `draft`; `completed` releases it straight away).
 
 F-Droid checks for new `vMAJOR.MINOR.PATCH` tags (`UpdateCheckMode: Tags`) and builds them
 automatically; new versions usually appear within a few days. If step 1 is skipped, Play

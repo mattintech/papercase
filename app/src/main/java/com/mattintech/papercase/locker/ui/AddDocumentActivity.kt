@@ -324,7 +324,7 @@ class AddDocumentActivity : AppCompatActivity() {
         }
 
         binding.btnChangeIcon.setOnClickListener {
-            IconPickerSheet(this, getSelectedDocumentType(), iconKey, iconColor) { key, colour ->
+            IconPickerSheet(this, getSelectedDocumentType().iconRes, iconKey, iconColor) { key, colour ->
                 iconKey = key
                 iconColor = colour
                 renderIcon()

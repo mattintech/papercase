@@ -157,7 +157,10 @@ class KdbxBackupFormatTest {
     @Test
     fun foldersBecomeNestedGroups() {
         val kids = Folder(name = "Kids", createdAt = 1_700_000_000_000, updatedAt = 1_760_000_000_123)
-        val jane = Folder(name = "Jane", parentId = kids.id, createdAt = 1_700_000_000_000, updatedAt = 1_760_000_000_456)
+        val jane = Folder(
+            name = "Jane", parentId = kids.id, iconKey = "face-girl", iconColor = "pink",
+            createdAt = 1_700_000_000_000, updatedAt = 1_760_000_000_456
+        )
         val out = ByteArrayOutputStream()
         runBlocking {
             KdbxBackupFormat.write(

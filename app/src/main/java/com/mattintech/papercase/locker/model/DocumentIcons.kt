@@ -14,6 +14,12 @@ object DocumentIcons {
     data class Colour(val key: String, val label: String, val argb: Int)
 
     val ICONS = listOf(
+        Icon("face-baby", "Baby", R.drawable.ic_face_baby),
+        Icon("face-boy", "Boy", R.drawable.ic_face_boy),
+        Icon("face-girl", "Girl", R.drawable.ic_face_girl),
+        Icon("face-bun", "Girl with bun", R.drawable.ic_face_bun),
+        Icon("face-curly", "Curly hair", R.drawable.ic_face_curly),
+        Icon("face-kid", "Child", R.drawable.ic_face_kid),
         Icon("id", "ID card", R.drawable.ic_badge),
         Icon("passport", "Passport", R.drawable.ic_shield_lock),
         Icon("travel", "Travel", R.drawable.ic_doc_travel),
@@ -56,8 +62,9 @@ object DocumentIcons {
 
     fun iconRes(doc: SecureDocument): Int = iconRes(doc.iconKey, doc.type)
 
-    fun iconRes(key: String, type: DocumentType): Int =
-        ICONS.firstOrNull { it.key == key }?.res ?: type.iconRes
+    fun iconRes(key: String, type: DocumentType): Int = iconRes(key, type.iconRes)
+
+    fun iconRes(key: String, default: Int): Int = ICONS.firstOrNull { it.key == key }?.res ?: default
 
     /** Shows [iconRes] in [view] (which has a circle background) in the colour [colourKey]. */
     fun apply(view: ImageView, iconRes: Int, colourKey: String) {

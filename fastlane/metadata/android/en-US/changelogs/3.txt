@@ -1,0 +1,9 @@
+New in 1.1:
+- Folders, including folders inside folders (e.g. Kids > Jane)
+- Card view with thumbnails, plus sorting by date, expiry or name
+- Pinch to zoom on photos and every page of a PDF
+- Capture multi-page documents page by page
+- Icons and colours for documents and folders, even a kid's face
+- Expired documents are highlighted
+- Document menu: share, save to device, move, edit, delete
+- Fixed: saving could fail with "Locker is locked" after a long edit

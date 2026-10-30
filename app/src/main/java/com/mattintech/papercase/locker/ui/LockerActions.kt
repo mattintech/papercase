@@ -229,11 +229,17 @@ class LockerActions(
     fun showFolderMenu(folder: Folder, anchor: View, folders: List<Folder>) {
         val popup = PopupMenu(activity, anchor)
         popup.menu.add(0, 1, 0, "Rename")
-        popup.menu.add(0, 2, 1, "Move")
-        popup.menu.add(0, 3, 2, "Delete")
+        popup.menu.add(0, 4, 1, "Change icon")
+        popup.menu.add(0, 2, 2, "Move")
+        popup.menu.add(0, 3, 3, "Delete")
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> promptFolderName("Rename folder", folder.name) { name -> launch { repository.saveFolder(folder.copy(name = name)) } }
+                4 -> IconPickerSheet(activity, R.drawable.ic_folder, folder.iconKey, folder.iconColor, onDone = { key, colour ->
+                    if (key != folder.iconKey || colour != folder.iconColor) {
+                        launch { repository.saveFolder(folder.copy(iconKey = key, iconColor = colour)) }
+                    }
+                }).show()
                 2 -> pickFolder(
                     folders, title = "Move ${folder.name} to",
                     exclude = FolderTree.subtree(folders, folder.id),
