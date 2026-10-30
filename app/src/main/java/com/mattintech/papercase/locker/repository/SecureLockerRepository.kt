@@ -11,6 +11,8 @@ import com.mattintech.papercase.locker.crypto.LockerKeystoreHelper
 import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
+import com.mattintech.papercase.locker.model.Folder
+import com.mattintech.papercase.locker.model.FolderTree
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.reminders.ReminderStore
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +48,7 @@ class SecureLockerRepository(private val context: Context) {
     private val lockerDir = File(context.filesDir, "locker").apply { if (!exists()) mkdirs() }
     private val filesDir = File(lockerDir, "files").apply { if (!exists()) mkdirs() }
     private val catalogFile = File(lockerDir, "catalog.enc")
+    private val thumbsDir = File(lockerDir, "thumbs").apply { if (!exists()) mkdirs() }
 
     private fun isDeviceSecure(): Boolean =
         (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure
@@ -76,10 +79,14 @@ class SecureLockerRepository(private val context: Context) {
     fun needsAuthBoundMigration(): Boolean =
         isDeviceSecure() && catalogKeyVersion() == LockerKeystoreHelper.KEY_VERSION_LEGACY
 
-    /** Documents plus deletion records (doc id -> deletedAt), so deletes can sync to other devices. */
+    /**
+     * Documents, folders, and deletion records (document or folder id -> deletedAt), so deletes can
+     * sync to other devices.
+     */
     private class Catalog(
         val documents: MutableList<SecureDocument>,
-        val deleted: MutableMap<String, Long>
+        val deleted: MutableMap<String, Long>,
+        val folders: MutableList<Folder> = mutableListOf()
     )
 
     /**
@@ -87,7 +94,7 @@ class SecureLockerRepository(private val context: Context) {
      * empty one (writing an "empty" list back would destroy every document).
      */
     private fun loadCatalogStrict(): Catalog {
-        if (!catalogFile.exists()) return Catalog(mutableListOf(), mutableMapOf())
+        if (!catalogFile.exists()) return Catalog(mutableListOf(), mutableMapOf(), mutableListOf())
         val jsonWrapper = JSONObject(catalogFile.readText())
         val version = jsonWrapper.optInt("keyVersion", LockerKeystoreHelper.KEY_VERSION_LEGACY)
         val jsonString = LockerKeystoreHelper.decryptString(
@@ -100,19 +107,21 @@ class SecureLockerRepository(private val context: Context) {
         val payload = jsonString.trimStart()
         val array: JSONArray
         val deleted = mutableMapOf<String, Long>()
+        val folders = mutableListOf<Folder>()
         if (payload.startsWith("[")) {
             array = JSONArray(payload)
         } else {
             val obj = JSONObject(payload)
             array = obj.getJSONArray("documents")
             deleted.putAll(deletionsFromJson(obj.optJSONArray("deleted")))
+            folders.addAll(Folder.listFromJson(obj.optJSONArray("folders")))
         }
 
         val list = mutableListOf<SecureDocument>()
         for (i in 0 until array.length()) {
             list.add(SecureDocument.fromJson(array.getJSONObject(i)))
         }
-        return Catalog(list, deleted)
+        return Catalog(list, deleted, folders)
     }
 
     /** Atomically replaces the catalog, encrypted with [version]. */
@@ -123,6 +132,7 @@ class SecureLockerRepository(private val context: Context) {
         val payload = JSONObject().apply {
             put("documents", array)
             put("deleted", deletionsToJson(catalog.deleted))
+            put("folders", Folder.listToJson(catalog.folders))
         }
 
         val (cipherBase64, ivBase64) = LockerKeystoreHelper.encryptString(payload.toString(), version)
@@ -219,6 +229,7 @@ class SecureLockerRepository(private val context: Context) {
      */
     suspend fun resetAfterKeyLoss() = withContext(Dispatchers.IO) {
         filesDir.listFiles()?.forEach { it.delete() }
+        thumbsDir.listFiles()?.forEach { it.delete() }
         catalogFile.delete()
         ReminderStore.clear(context)
         AutoBackupManager.onLockerKeyLost(context)
@@ -252,6 +263,91 @@ class SecureLockerRepository(private val context: Context) {
         }
     }
 
+    suspend fun getFolders(): List<Folder> = withContext(Dispatchers.IO) {
+        loadCatalogStrict().folders.toList()
+    }
+
+    /** Adds or renames a folder. */
+    suspend fun saveFolder(folder: Folder) = withContext(Dispatchers.IO) {
+        val catalog = loadCatalogStrict()
+        val saved = folder.copy(updatedAt = System.currentTimeMillis())
+        val index = catalog.folders.indexOfFirst { it.id == folder.id }
+        if (index >= 0) catalog.folders[index] = saved else catalog.folders.add(saved)
+        catalog.deleted.remove(folder.id)
+        writeCatalog(catalog, activeKeyVersion())
+    }
+
+    /**
+     * Deletes a folder. Nothing inside is deleted: its documents and folders move up to its parent.
+     */
+    suspend fun deleteFolder(folderId: String, deletedAt: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+        val catalog = loadCatalogStrict()
+        if (removeFolder(catalog, folderId, deletedAt)) writeCatalog(catalog, activeKeyVersion())
+    }
+
+    private fun removeFolder(catalog: Catalog, folderId: String, deletedAt: Long): Boolean {
+        val folder = catalog.folders.find { it.id == folderId } ?: return false
+        val now = System.currentTimeMillis()
+        catalog.folders.replaceAll { if (it.parentId == folderId) it.copy(parentId = folder.parentId, updatedAt = now) else it }
+        catalog.documents.replaceAll { if (it.folderId == folderId) it.copy(folderId = folder.parentId, updatedAt = now) else it }
+        catalog.folders.removeAll { it.id == folderId }
+        catalog.deleted[folderId] = maxOf(deletedAt, catalog.deleted[folderId] ?: 0L)
+        return true
+    }
+
+    /** Moves a document into [folderId] (blank = top level). Counts as a change, so the move syncs. */
+    suspend fun moveDocument(docId: String, folderId: String) = withContext(Dispatchers.IO) {
+        val catalog = loadCatalogStrict()
+        val index = catalog.documents.indexOfFirst { it.id == docId }
+        if (index < 0) return@withContext
+        catalog.documents[index] = catalog.documents[index].copy(folderId = folderId, updatedAt = System.currentTimeMillis())
+        writeCatalog(catalog, activeKeyVersion())
+    }
+
+    /** Moves a folder under [parentId] (blank = top level); refuses to move it inside itself. */
+    suspend fun moveFolder(folderId: String, parentId: String) = withContext(Dispatchers.IO) {
+        val catalog = loadCatalogStrict()
+        if (parentId in FolderTree.subtree(catalog.folders, folderId)) return@withContext
+        val index = catalog.folders.indexOfFirst { it.id == folderId }
+        if (index < 0) return@withContext
+        catalog.folders[index] = catalog.folders[index].copy(parentId = parentId, updatedAt = System.currentTimeMillis())
+        writeCatalog(catalog, activeKeyVersion())
+    }
+
+    /**
+     * Folders from another device or a backup. The newer version of each folder wins; folders deleted
+     * on one side after the other last changed them are deleted. With [replace], the incoming folders
+     * replace these entirely.
+     */
+    suspend fun mergeFolders(incoming: List<Folder>, deletions: Map<String, Long>, replace: Boolean = false) =
+        withContext(Dispatchers.IO) {
+            val catalog = loadCatalogStrict()
+            if (replace) {
+                catalog.folders.clear()
+                catalog.folders.addAll(incoming)
+            } else {
+                for (folder in incoming) {
+                    val deletedHere = catalog.deleted[folder.id]
+                    if (deletedHere != null && deletedHere >= folder.updatedAt) continue
+                    val index = catalog.folders.indexOfFirst { it.id == folder.id }
+                    when {
+                        index < 0 -> catalog.folders.add(folder)
+                        folder.updatedAt > catalog.folders[index].updatedAt -> catalog.folders[index] = folder
+                    }
+                }
+                val incomingIds = incoming.mapTo(HashSet()) { it.id }
+                catalog.folders.filter { f ->
+                    val deletedThere = deletions[f.id]
+                    f.id !in incomingIds && deletedThere != null && deletedThere >= f.updatedAt
+                }.forEach { removeFolder(catalog, it.id, deletions.getValue(it.id)) }
+            }
+            // A folder can't end up inside itself after merging moves from two devices
+            catalog.folders.replaceAll { f ->
+                if (f.parentId.isNotEmpty() && f.id in FolderTree.path(catalog.folders, f.parentId).map { it.id }) f.copy(parentId = "") else f
+            }
+            writeCatalog(catalog, activeKeyVersion())
+        }
+
     /** Deletion records: document id -> time it was deleted. */
     suspend fun getDeletedDocuments(): Map<String, Long> = withContext(Dispatchers.IO) {
         loadCatalogStrict().deleted.toMap()
@@ -261,7 +357,7 @@ class SecureLockerRepository(private val context: Context) {
     suspend fun recordDeletions(deletions: Map<String, Long>) = withContext(Dispatchers.IO) {
         if (deletions.isEmpty()) return@withContext
         val catalog = loadCatalogStrict()
-        val existingIds = catalog.documents.mapTo(HashSet()) { it.id }
+        val existingIds = catalog.documents.mapTo(HashSet()) { it.id } + catalog.folders.map { it.id }
         var changed = false
         for ((id, deletedAt) in deletions) {
             // A document that exists here was saved after that deletion, so it wins
@@ -287,10 +383,55 @@ class SecureLockerRepository(private val context: Context) {
         filesDir.listFiles()?.forEach { f ->
             if (f.isFile && f.name !in referenced && f.lastModified() < cutoff && f.delete()) removed++
         }
+        val thumbs = referenced.mapTo(HashSet()) { it.substringBefore('.') + ".thumb" }
+        thumbsDir.listFiles()?.forEach { f ->
+            if (f.isFile && f.name !in thumbs && f.lastModified() < cutoff) f.delete()
+        }
         removed
     }
 
+    /**
+     * The attachment a document's thumbnail is made from: the front side, else the first photo,
+     * else the first PDF. Password-protected documents never get a thumbnail.
+     */
+    fun thumbnailSource(doc: SecureDocument): DocumentAttachment? {
+        if (doc.isPasswordProtected) return null
+        return doc.getFrontAttachment()?.takeIf { !it.isPdf }
+            ?: doc.attachments.firstOrNull { !it.isPdf }
+            ?: doc.attachments.firstOrNull { it.isPdf }
+    }
+
+    // Named after the source file, so a new front photo means a new thumbnail
+    private fun thumbFile(source: DocumentAttachment) = File(thumbsDir, source.encryptedFileName.substringBefore('.') + ".thumb")
+
+    /** Small JPEG thumbnail, encrypted with the locker key like everything else; null if not made yet. */
+    suspend fun readThumbnail(source: DocumentAttachment): ByteArray? = withContext(Dispatchers.IO) {
+        val f = thumbFile(source)
+        if (!f.exists()) return@withContext null
+        try {
+            val bytes = f.readBytes()
+            val version = bytes[0].toInt()
+            val ivLen = bytes[1].toInt()
+            LockerKeystoreHelper.decryptBytes(bytes.copyOfRange(2 + ivLen, bytes.size), bytes.copyOfRange(2, 2 + ivLen), version)
+        } catch (e: LockerLockedException) {
+            throw e
+        } catch (e: Exception) {
+            // Old key or damaged: make it again
+            f.delete()
+            null
+        }
+    }
+
+    suspend fun saveThumbnail(source: DocumentAttachment, jpeg: ByteArray) = withContext(Dispatchers.IO) {
+        val version = activeKeyVersion()
+        val (cipher, iv) = LockerKeystoreHelper.encryptBytes(jpeg, version)
+        val tmp = File(thumbsDir, "${UUID.randomUUID()}.tmp")
+        tmp.writeBytes(byteArrayOf(version.toByte(), iv.size.toByte()) + iv + cipher)
+        if (!tmp.renameTo(thumbFile(source))) tmp.delete()
+    }
+
     fun deleteAttachmentFile(attachment: DocumentAttachment) {
+        thumbFile(attachment).delete()
         val f = File(filesDir, attachment.encryptedFileName)
         if (f.exists()) f.delete()
     }
@@ -400,7 +541,7 @@ class SecureLockerRepository(private val context: Context) {
                     )
                 })
             }
-            writeCatalog(Catalog(migrated.toMutableList(), catalog.deleted), authBound)
+            writeCatalog(Catalog(migrated.toMutableList(), catalog.deleted, catalog.folders), authBound)
         } catch (e: Exception) {
             newFiles.forEach { it.delete() }
             throw e
@@ -418,10 +559,11 @@ class SecureLockerRepository(private val context: Context) {
 
     suspend fun exportAttachmentForShare(
         attachment: DocumentAttachment,
-        customDek: SecretKey? = null
+        customDek: SecretKey? = null,
+        name: String = attachment.fileName
     ): Uri = withContext(Dispatchers.IO) {
         val sharedDir = File(context.cacheDir, "shared_docs").apply { if (!exists()) mkdirs() }
-        val tempFile = File(sharedDir, attachment.fileName)
+        val tempFile = File(sharedDir, name.replace('/', '_'))
         val decryptedBytes = readAttachmentBytes(attachment, customDek)
         tempFile.writeBytes(decryptedBytes)
 

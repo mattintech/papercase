@@ -1029,6 +1029,39 @@
                 android:paddingHorizontal="16dp"
                 android:paddingTop="8dp">
 
+                <!-- Folder path (Locker > Kids > Jane) and new folder -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <HorizontalScrollView
+                        android:id="@+id/scrollBreadcrumbs"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/layoutBreadcrumbs"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal" />
+
+                    </HorizontalScrollView>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnNewFolder"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="New folder"
+                        app:icon="@drawable/ic_create_new_folder" />
+
+                </LinearLayout>
+
                 <!-- Locker Category Filter Chips -->
                 <HorizontalScrollView
                     android:layout_width="match_parent"
@@ -1144,6 +1177,17 @@
                     </LinearLayout>
 
                 </com.google.android.material.card.MaterialCardView>
+
+                <TextView
+                    android:id="@+id/tvFolderEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:gravity="center"
+                    android:text="Nothing in this folder yet. Tap Add Document to put something here."
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone" />
 
                 <!-- Document List -->
                 <androidx.recyclerview.widget.RecyclerView

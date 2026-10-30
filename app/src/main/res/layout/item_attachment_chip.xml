@@ -84,6 +84,17 @@
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMoveUp"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:contentDescription="Move up"
+            android:visibility="gone"
+            app:icon="@drawable/ic_arrow_upward"
+            app:iconSize="18dp"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnEditLabel"
             style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="36dp"

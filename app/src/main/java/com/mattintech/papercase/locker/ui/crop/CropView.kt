@@ -60,14 +60,15 @@ class CropView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** Corners slightly inside the photo, so they're easy to grab. */
+    /** Corners at the photo's edges, so Done without adjusting keeps the whole photo. */
     fun resetCorners() {
         val b = bitmap ?: return
-        val inset = 0.06f
-        corners[0].set(b.width * inset, b.height * inset)
-        corners[1].set(b.width * (1 - inset), b.height * inset)
-        corners[2].set(b.width * (1 - inset), b.height * (1 - inset))
-        corners[3].set(b.width * inset, b.height * (1 - inset))
+        val w = b.width.toFloat()
+        val h = b.height.toFloat()
+        corners[0].set(0f, 0f)
+        corners[1].set(w, 0f)
+        corners[2].set(w, h)
+        corners[3].set(0f, h)
         invalidate()
     }
 

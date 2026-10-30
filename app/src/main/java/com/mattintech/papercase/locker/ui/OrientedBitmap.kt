@@ -12,8 +12,10 @@ import java.io.ByteArrayInputStream
  */
 object OrientedBitmap {
 
-    fun decode(bytes: ByteArray): Bitmap? {
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    /** [sampleSize] > 1 decodes a smaller image (e.g. 4 = a quarter of the width and height). */
+    fun decode(bytes: ByteArray, sampleSize: Int = 1): Bitmap? {
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
 
         val orientation = try {
             ExifInterface(ByteArrayInputStream(bytes))
