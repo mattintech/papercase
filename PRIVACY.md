@@ -1,0 +1,47 @@
+# Privacy Policy
+
+_Last updated: October 29, 2026_
+
+Papercase is an open-source app for storing your documents on your own device. This policy explains what the app does with your information. In short: **Papercase does not collect, store, or share any of your data. Everything stays on your devices.**
+
+## What Papercase stores
+
+Documents, photos, notes and your optional master passphrase are stored **only on your device**, encrypted with a key held in the Android Keystore. They are never sent to the developer or to any server.
+
+## What Papercase does not do
+
+- No accounts or sign-in.
+- No analytics, advertising, tracking or crash reporting.
+- No servers. The developer cannot see or recover your documents.
+
+## Permissions
+
+| Permission | Why it's used |
+|---|---|
+| Camera | To photograph documents and scan transfer QR codes. Photos are saved only inside the encrypted locker. |
+| Biometric | To unlock the locker and your passphrase with your fingerprint or device PIN. Android handles the biometric check; the app never sees your fingerprint. |
+| Internet, network and Wi-Fi state | Only for phone-to-phone transfers that you start, directly between your own devices on the same local network. Nothing is sent to the internet. |
+| Notifications and foreground service | To show the clipboard auto-clear countdown and to tell you when the locker has locked. |
+
+## Transfers and backups
+
+- **Phone-to-phone transfer** sends your encrypted locker directly to another device on your local network. It happens only when you start it and approve the receiving device.
+- **Backup files** are created only when you export one, and saved wherever you choose. They are encrypted, and can only be opened with the token shown at export.
+
+What you do with a backup file afterwards (for example uploading it to a cloud drive) is up to you, and is covered by that service's own privacy policy.
+
+## Clipboard
+
+When you copy a document number or your passphrase, it is placed on the Android clipboard. If auto-clear is on, Papercase clears it after the timeout you choose. Some keyboards, such as Samsung Keyboard, keep their own clipboard history that other apps cannot clear.
+
+## Children
+
+Papercase is not directed at children and does not knowingly collect any information from anyone.
+
+## Changes
+
+Any changes to this policy will be published in this file in the [Papercase repository](https://github.com/mattintech/papercase), with the date updated above.
+
+## Contact
+
+Questions? Open an issue at https://github.com/mattintech/papercase/issues.

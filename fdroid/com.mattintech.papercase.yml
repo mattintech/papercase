@@ -1,0 +1,27 @@
+# Build recipe for F-Droid. Submit this file to https://gitlab.com/fdroid/fdroiddata
+# as metadata/com.mattintech.papercase.yml (see fdroid/README.md).
+Categories:
+  - Security
+License: GPL-3.0-only
+AuthorName: Matt Hills
+SourceCode: https://github.com/mattintech/papercase
+IssueTracker: https://github.com/mattintech/papercase/issues
+Changelog: https://github.com/mattintech/papercase/releases
+
+AutoName: Papercase
+
+RepoType: git
+Repo: https://github.com/mattintech/papercase.git
+
+Builds:
+  - versionName: 1.0.0
+    versionCode: 1
+    commit: v1.0.0
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.0.0
+CurrentVersionCode: 1

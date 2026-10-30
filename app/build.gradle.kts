@@ -14,13 +14,30 @@ android {
         minSdk = 31
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing is only configured when a keystore is supplied (the Google Play
+    // release workflow). F-Droid and local builds produce unsigned release APKs.
+    val releaseKeystore = System.getenv("PAPERCASE_KEYSTORE_FILE")
+    if (releaseKeystore != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("PAPERCASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PAPERCASE_KEY_ALIAS")
+                keyPassword = System.getenv("PAPERCASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseKeystore != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -28,6 +45,13 @@ android {
             )
         }
     }
+
+    // F-Droid rejects the encrypted dependency metadata blob Google adds by default
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
