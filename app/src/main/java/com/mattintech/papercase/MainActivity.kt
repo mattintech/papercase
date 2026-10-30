@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -612,21 +613,16 @@ class MainActivity : AppCompatActivity() {
         if (promptIfLocked) promptLockerUnlock()
     }
 
-    private val isLockerOpenOnScreen: Boolean
-        get() = binding.layoutSecureLocker.visibility == View.VISIBLE &&
-            binding.layoutLockerContent.visibility == View.VISIBLE
-
-    /** Gear menu: locker actions only while the locker is open, About always. */
+    /** Gear menu, the same on both tabs. Locker actions ask to unlock first if needed. */
     private fun showSettingsMenu(anchor: View) {
         val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
         popup.menuInflater.inflate(R.menu.menu_toolbar_settings, popup.menu)
-        popup.menu.findItem(R.id.action_transfer).isVisible = isLockerOpenOnScreen
-        popup.menu.findItem(R.id.action_lock).isVisible = isLockerOpenOnScreen
-        popup.menu.findItem(R.id.action_settings).isVisible = isLockerOpenOnScreen
+        popup.setForceShowIcon(true)
+        popup.menu.findItem(R.id.action_lock).isEnabled = isLockerUnlocked
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                R.id.action_transfer -> showVaultTransferOptions()
-                R.id.action_settings -> LockerSettingsActivity.start(this)
+                R.id.action_transfer -> withLockerUnlocked("Unlock to transfer or back up") { showVaultTransferOptions() }
+                R.id.action_settings -> withLockerUnlocked("Unlock to change settings") { LockerSettingsActivity.start(this) }
                 R.id.action_lock -> {
                     SessionManager.lock()
                     lockLockerInPlace()
@@ -637,6 +633,17 @@ class MainActivity : AppCompatActivity() {
             true
         }
         popup.show()
+    }
+
+    private fun withLockerUnlocked(subtitle: String, action: () -> Unit) {
+        lifecycleScope.launch {
+            if (!awaitLockerUnlock(subtitle)) return@launch
+            if (!isLockerUnlocked) {
+                isLockerUnlocked = true
+                if (binding.layoutSecureLocker.visibility == View.VISIBLE) displayLockerTab()
+            }
+            action()
+        }
     }
 
     private fun showLockedLocker() {
@@ -1106,9 +1113,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAboutDialog() {
         val aboutView = layoutInflater.inflate(R.layout.dialog_about, null)
+        aboutView.findViewById<TextView>(R.id.tvAboutVersion).text = "Version ${BuildConfig.VERSION_NAME}"
         MaterialAlertDialogBuilder(this)
             .setView(aboutView)
-            .setPositiveButton("Got It", null)
+            .setPositiveButton("Learn more on GitHub") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mattintech/papercase")))
+            }
+            .setNegativeButton("Close", null)
             .show()
     }
 

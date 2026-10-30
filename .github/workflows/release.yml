@@ -210,8 +210,9 @@ jobs:
           releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
           mappingFile: app/build/outputs/mapping/playRelease/mapping.txt
           track: internal
-          # Apps that haven't been published yet only accept draft releases
-          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          # Goes straight to internal testers. Play only accepts this once the app's first
+          # release has been rolled out in Play Console; before that, uploads must be drafts.
+          status: completed
           whatsNewDirectory: whatsnew
 
       - name: Summary
