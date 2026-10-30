@@ -1,0 +1,5 @@
+First release.
+- Encrypted document locker, unlocked with fingerprint or device PIN
+- Phone-to-phone transfer over local Wi-Fi with QR code and sender approval
+- KeePass (.kdbx) backups that also open in KeePassXC and KeePassDX
+- Optional stored master passphrase with one-tap copy and clipboard auto-clear

@@ -1,0 +1,71 @@
+name: Release
+
+# Push a tag like v1.0.0 on main to build a signed release, attach the APK to a
+# GitHub Release, and upload the app bundle to Google Play.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      PAPERCASE_KEYSTORE_FILE: ${{ github.workspace }}/upload-keystore.jks
+      PAPERCASE_KEYSTORE_PASSWORD: ${{ secrets.PAPERCASE_KEYSTORE_PASSWORD }}
+      PAPERCASE_KEY_ALIAS: ${{ secrets.PAPERCASE_KEY_ALIAS }}
+      PAPERCASE_KEY_PASSWORD: ${{ secrets.PAPERCASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Check tag matches versionName
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [ "v$VERSION_NAME" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match versionName $VERSION_NAME" >&2
+            exit 1
+          fi
+          echo "VERSION_CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)" >> "$GITHUB_ENV"
+
+      - name: Restore upload keystore
+        run: echo "${{ secrets.PAPERCASE_KEYSTORE_BASE64 }}" | base64 --decode > "$PAPERCASE_KEYSTORE_FILE"
+
+      - name: Test and build signed release
+        run: ./gradlew testDebugUnitTest assembleRelease bundleRelease
+
+      - name: Prepare release files
+        run: |
+          mkdir -p dist whatsnew
+          cp app/build/outputs/apk/release/app-release.apk "dist/papercase-$GITHUB_REF_NAME.apk"
+          CHANGELOG="fastlane/metadata/android/en-US/changelogs/$VERSION_CODE.txt"
+          if [ -f "$CHANGELOG" ]; then cp "$CHANGELOG" whatsnew/whatsnew-en-US; else echo "Bug fixes and improvements." > whatsnew/whatsnew-en-US; fi
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/papercase-${{ github.ref_name }}.apk
+          body_path: whatsnew/whatsnew-en-US
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.mattintech.papercase
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          # Apps that haven't been published yet only accept draft releases
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          whatsNewDirectory: whatsnew
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$PAPERCASE_KEYSTORE_FILE"

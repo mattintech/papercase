@@ -1,6 +1,16 @@
-# Papercase
+<p align="center">
+  <img src="docs/images/icon.png" width="128" alt="Papercase icon">
+</p>
 
-**A private, offline locker for your important documents on Android.**
+<h1 align="center">Papercase</h1>
+
+<p align="center"><b>A private, offline locker for your important documents on Android.</b></p>
+
+<p align="center">
+  <a href="https://github.com/mattintech/papercase/actions/workflows/ci.yml"><img src="https://github.com/mattintech/papercase/actions/workflows/ci.yml/badge.svg?branch=develop" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/Android-12%2B-3DDC84" alt="Android 12+">
+</p>
 
 Keep your passport, driver's licence, health card and other papers on your phone, encrypted and locked behind your fingerprint. Move them between your own devices over Wi-Fi without any cloud service, and back them up to a file you can open in KeePass.
 
@@ -56,11 +66,13 @@ Known limitations:
 - For password-protected documents, only the attachments are encrypted with the document password; the title, number and notes are protected by the locker key only (and are readable in a backup by anyone with its token).
 - Samsung Keyboard keeps its own clipboard history, which other apps can't clear. The app explains how to turn it off.
 
+Papercase collects no data at all. See the [privacy policy](PRIVACY.md).
+
 Found a security issue? Please don't open a public issue. See [Reporting security issues](CONTRIBUTING.md#reporting-security-issues).
 
 ## Install
 
-Papercase isn't in an app store yet. F-Droid and Google Play releases are planned.
+Papercase isn't in an app store yet. F-Droid and Google Play releases are on the way; signed APKs will be attached to each [GitHub release](https://github.com/mattintech/papercase/releases).
 
 To build it yourself:
 
