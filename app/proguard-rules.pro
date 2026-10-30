@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Keep line numbers in crash reports (mapping.txt translates the obfuscated names)
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
