@@ -34,6 +34,12 @@ android {
     }
 
     buildTypes {
+        // Debug installs as a separate app (com.mattintech.papercase.debug, "Papercase Debug"),
+        // so it can sit next to the Play / F-Droid version without touching its data.
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             if (releaseKeystore != null) {
                 signingConfig = signingConfigs.getByName("release")

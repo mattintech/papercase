@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug builds show a different name so they're easy to tell apart from the store version -->
+    <string name="app_name">Papercase Debug</string>
+    <string name="tile_label">Papercase Debug</string>
+</resources>
