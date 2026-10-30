@@ -310,7 +310,7 @@ class AddDocumentActivity : AppCompatActivity() {
                 repository.getDocumentById(docId)
             } catch (e: Exception) {
                 // Locker key needs a fresh unlock (or was lost): go back to the locker screen
-                Toast.makeText(this@AddDocumentActivity, "Secure Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@AddDocumentActivity, "Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
                 finish()
                 return@launch
             } ?: return@launch

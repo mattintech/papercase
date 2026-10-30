@@ -170,7 +170,7 @@ object SessionManager {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             ?: return
         val name = "Locker Security"
-        val description = "Alerts when Secure Locker is locked due to inactivity"
+        val description = "Alerts when Locker is locked due to inactivity"
         val importance = NotificationManager.IMPORTANCE_DEFAULT
         val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
             this.description = description
@@ -195,11 +195,11 @@ object SessionManager {
 
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_folder_lock)
-            .setContentTitle("Secure Locker Locked")
-            .setContentText("Secure Locker was locked due to 30 seconds of inactivity.")
+            .setContentTitle("Locker Locked")
+            .setContentText("Locker was locked due to 30 seconds of inactivity.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("Secure Locker was automatically locked due to 30 seconds of inactivity in the background.")
+                    .bigText("Locker was automatically locked due to 30 seconds of inactivity in the background.")
             )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)

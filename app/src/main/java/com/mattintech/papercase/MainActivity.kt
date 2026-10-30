@@ -572,7 +572,7 @@ class MainActivity : AppCompatActivity() {
         binding.nestedScrollView.visibility = View.GONE
         binding.layoutSecureLocker.visibility = View.VISIBLE
         binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
-        binding.tvToolbarTitle.text = "Secure Locker"
+        binding.tvToolbarTitle.text = "Locker"
 
         if (isLockerUnlocked || SessionManager.isSessionValid(getSessionTimeoutMs())) {
             isLockerUnlocked = true
@@ -611,7 +611,7 @@ class MainActivity : AppCompatActivity() {
     private fun promptLockerUnlock() {
         BiometricAuthHelper.promptGeneralUnlock(
             activity = this,
-            title = "Unlock Secure Locker",
+            title = "Unlock Locker",
             subtitle = "Authenticate with biometric or device PIN/password",
             onSuccess = {
                 SessionManager.markAuthenticated()
@@ -631,7 +631,7 @@ class MainActivity : AppCompatActivity() {
         binding.layoutLockerContent.visibility = View.VISIBLE
         binding.fabAddDocument.show()
         binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
-        binding.tvToolbarTitle.text = "Secure Locker"
+        binding.tvToolbarTitle.text = "Locker"
         binding.btnLockLocker.visibility = View.VISIBLE
         binding.btnVaultTransfer.visibility = View.VISIBLE
         migrateLockerKeyIfNeeded()
@@ -680,7 +680,7 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Locker can't be opened")
             .setMessage(
-                "Android deleted the Secure Locker key, usually because the screen lock was removed or reset. " +
+                "Android deleted the locker key, usually because the screen lock was removed or reset. " +
                 "The stored documents can't be decrypted any more.\n\n" +
                 "Reset the locker to start fresh, then import a backup if you have one."
             )
@@ -722,7 +722,7 @@ class MainActivity : AppCompatActivity() {
         return suspendCancellableCoroutine { cont ->
             BiometricAuthHelper.promptGeneralUnlock(
                 activity = this,
-                title = "Unlock Secure Locker",
+                title = "Unlock Locker",
                 subtitle = subtitle,
                 onSuccess = {
                     SessionManager.markAuthenticated()
@@ -1101,7 +1101,7 @@ class MainActivity : AppCompatActivity() {
         val approved = suspendCancellableCoroutine { cont ->
             val dialog = MaterialAlertDialogBuilder(this)
                 .setTitle("Send your vault?")
-                .setMessage("$receiverName ($receiverAddress) wants to receive your Secure Locker.\n\nOnly allow this if it's your device.")
+                .setMessage("$receiverName ($receiverAddress) wants to receive your locker.\n\nOnly allow this if it's your device.")
                 .setCancelable(false)
                 .setPositiveButton("Allow") { _, _ -> if (cont.isActive) cont.resume(true) }
                 .setNegativeButton("Deny") { _, _ -> if (cont.isActive) cont.resume(false) }

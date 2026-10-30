@@ -12,10 +12,10 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** The locker key needs a fresh biometric / device credential authentication. */
-class LockerLockedException(cause: Throwable? = null) : Exception("Secure Locker is locked", cause)
+class LockerLockedException(cause: Throwable? = null) : Exception("Locker is locked", cause)
 
 /** The auth-bound locker key was destroyed by Android (e.g. the screen lock was removed). */
-class LockerKeyInvalidatedException(cause: Throwable? = null) : Exception("Secure Locker key is no longer available", cause)
+class LockerKeyInvalidatedException(cause: Throwable? = null) : Exception("Locker key is no longer available", cause)
 
 object LockerKeystoreHelper {
 
