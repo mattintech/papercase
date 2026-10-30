@@ -66,6 +66,8 @@ button:disabled { opacity: .5; cursor: progress; }
     radial-gradient(900px 900px at 0% 100%, rgba(4, 30, 73, .6), transparent 65%),
     linear-gradient(200deg, #0F5FDB 0%, #0842A0 55%, var(--navy) 100%);
 }
+.canvas.plain { background: none; }
+
 /* Faint sheets of paper drifting in the background */
 .sheet { position: absolute; border-radius: 4%; background: rgba(255, 255, 255, .06); border: 2px solid rgba(255, 255, 255, .08); }
 

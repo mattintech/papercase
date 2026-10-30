@@ -133,6 +133,15 @@
     return { W: W * 2, H, html, alt: false, pair: true };
   }
 
+  /** Play Store icon: full-bleed square; Play rounds the corners and adds the shadow itself. */
+  function storeIcon() {
+    const W = 512, H = 512;
+    const svg = ICON.replace('viewBox="18 18 72 72"', 'viewBox="18 18 72 72" style="width:512px;height:512px;display:block"')
+      .replace('<rect x="18" y="18" width="72" height="72" rx="16"/>', '<rect x="18" y="18" width="72" height="72"/>')
+      .replace(/ic-r/g, 'ic-sq');
+    return { W, H, html: svg, plain: true };
+  }
+
   function feature() {
     const W = 1024, H = 500;
     let html = sheets(W, H * 2, 3);
@@ -151,6 +160,10 @@
 
   // ---------- Content ----------
   const SETS = [
+    {
+      id: 'icon', title: 'App icon', spec: '512 × 512 PNG · Google Play (Play rounds the corners)', format: 'icon', ext: 'png',
+      shots: [{ id: 'icon', name: 'app-icon-512', build: storeIcon }],
+    },
     {
       id: 'feature', title: 'Feature graphic', spec: '1024 × 500 · Google Play', format: 'feature',
       shots: [{ id: 'feature', name: 'feature-graphic', build: feature }],
@@ -197,7 +210,7 @@
   }
 
   // ---------- Page ----------
-  const PREVIEW_H = { feature: 250, phone: 460, tablet: 460 };
+  const PREVIEW_H = { icon: 200, feature: 250, phone: 460, tablet: 460 };
   const nodes = new Map(); // shot id -> { el, W, H, pair, set, shot }
 
   function render() {
@@ -216,10 +229,10 @@
         c.className = 'card';
         const names = [].concat(shot.name);
         c.innerHTML = `<div class="preview" style="width:${b.W * scale}px;height:${b.H * scale}px">
-            <div class="canvas${b.alt ? ' alt' : ''}" id="cv-${shot.id}" style="width:${b.W}px;height:${b.H}px;transform:scale(${scale})">${b.html}</div>
+            <div class="canvas${b.alt ? ' alt' : ''}${b.plain ? ' plain' : ''}" id="cv-${shot.id}" style="width:${b.W}px;height:${b.H}px;transform:scale(${scale})">${b.html}</div>
             ${b.pair ? `<div class="pair-split" style="left:${(b.W / 2) * scale}px"></div>` : ''}
           </div>
-          <div class="meta"><span>${names.map((n) => n + '.jpg').join(' + ')}</span><button data-shot="${shot.id}">Download</button></div>`;
+          <div class="meta"><span>${names.map((n) => n + '.' + (set.ext || 'jpg')).join(' + ')}</span><button data-shot="${shot.id}">Download</button></div>`;
         row.appendChild(c);
         nodes.set(shot.id, { el: c.querySelector('.canvas'), W: b.W, H: b.H, pair: !!b.pair, set, shot });
       });
@@ -246,7 +259,8 @@
     });
   }
 
-  const toJpeg = (canvas) => new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.95));
+  // JPEG for screenshots and the feature graphic (no alpha); PNG for the icon
+  const encode = (canvas, ext) => new Promise((ok) => canvas.toBlob(ok, ext === 'png' ? 'image/png' : 'image/jpeg', 0.95));
 
   function save(blob, filename) {
     const a = document.createElement('a');
@@ -258,8 +272,10 @@
 
   async function downloadShot(id) {
     const n = nodes.get(id);
+    const ext = n.set.ext || 'jpg';
+    const flat = n.set.id === 'feature' || n.set.id === 'icon';
     for (const { name, canvas } of await renderShot(id)) {
-      save(await toJpeg(canvas), `papercase-${n.set.id === 'feature' ? '' : n.set.id + '-'}${name}.jpg`);
+      save(await encode(canvas, ext), `papercase-${flat ? '' : n.set.id + '-'}${name}.${ext}`);
     }
   }
 
@@ -269,8 +285,9 @@
       for (const shot of set.shots) {
         toast(`Rendering ${set.title.toLowerCase()}…`);
         for (const { name, canvas } of await renderShot(shot.id)) {
-          const path = set.id === 'feature' ? `${name}.jpg` : `${set.id}/${name}.jpg`;
-          zip.file(path, await toJpeg(canvas));
+          const ext = set.ext || 'jpg';
+          const path = set.id === 'feature' || set.id === 'icon' ? `${name}.${ext}` : `${set.id}/${name}.${ext}`;
+          zip.file(path, await encode(canvas, ext));
         }
       }
     }

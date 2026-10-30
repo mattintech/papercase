@@ -7,10 +7,11 @@ Open `index.html` in Chrome (straight from disk is fine) and:
 - **Click any headline or subtitle to edit it.** Edits are kept in your browser; **Reset edits** clears them.
 - **Download** saves one image (a spanning pair saves both halves). **Download set** and **Download everything** make a zip.
 
-Downloads are JPEGs at Google Play's sizes (Play rejects PNGs with an alpha channel):
+Downloads are at Google Play's sizes. Screenshots and the feature graphic are JPEGs (Play rejects PNGs with an alpha channel); the icon is a PNG:
 
 | Set | Size | Play Console field |
 |---|---|---|
+| App icon | 512 × 512 PNG | App icon (Play rounds the corners itself) |
 | Feature graphic | 1024 × 500 | Feature graphic |
 | Phone | 1080 × 1920 (9:16) | Phone screenshots |
 | Tablet | 1440 × 2560 (9:16) | 7-inch and 10-inch tablet screenshots |
