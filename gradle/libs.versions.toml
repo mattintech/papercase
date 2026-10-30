@@ -1,6 +1,5 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.0.21"
+agp = "9.5.0"
 coreKtx = "1.15.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
@@ -22,5 +21,4 @@ material = { group = "com.google.android.material", name = "material", version.r
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 
