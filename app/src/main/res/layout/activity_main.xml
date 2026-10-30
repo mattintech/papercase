@@ -48,38 +48,14 @@
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnVaultTransfer"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginEnd="4dp"
-                android:contentDescription="Export or Import Vault"
-                android:visibility="gone"
-                app:icon="@drawable/ic_share"
-                app:iconTint="?attr/colorOnSurfaceVariant" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnLockLocker"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginEnd="4dp"
-                android:contentDescription="Lock Vault Now"
-                android:visibility="gone"
-                app:icon="@drawable/ic_lock"
-                app:iconTint="?attr/colorOnSurfaceVariant" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnHelp"
+                android:id="@+id/btnSettings"
                 style="@style/Widget.Material3.Button.IconButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
                 android:layout_marginEnd="8dp"
-                android:contentDescription="About"
-                app:icon="@drawable/ic_info"
+                android:contentDescription="Settings"
+                app:icon="@drawable/ic_settings"
                 app:iconTint="?attr/colorOnSurfaceVariant" />
 
         </com.google.android.material.appbar.MaterialToolbar>

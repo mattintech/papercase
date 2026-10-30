@@ -451,25 +451,10 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.clipboard_cleared, Toast.LENGTH_SHORT).show()
         }
 
-        // Help / Info Button
-        binding.btnHelp.setOnClickListener {
-            showAboutDialog()
-        }
-
-        // Lock Locker Immediately Button
-        binding.btnLockLocker.setOnClickListener {
-            SessionManager.lock()
-            lockLockerInPlace()
-            Toast.makeText(this, "Locker locked", Toast.LENGTH_SHORT).show()
-        }
+        binding.btnSettings.setOnClickListener { showSettingsMenu(it) }
 
         binding.btnUnlockLocker.setOnClickListener {
             promptLockerUnlock()
-        }
-
-        // Vault Transfer (Export / Import) Button
-        binding.btnVaultTransfer.setOnClickListener {
-            showVaultTransferOptions()
         }
 
         // Settings Switches
@@ -563,8 +548,6 @@ class MainActivity : AppCompatActivity() {
         binding.fabAddDocument.hide()
         binding.ivToolbarLogo.setImageResource(R.drawable.ic_shield_check)
         binding.tvToolbarTitle.text = getString(R.string.app_name)
-        binding.btnLockLocker.visibility = View.GONE
-        binding.btnVaultTransfer.visibility = View.GONE
     }
 
     /** Shows the locker tab: the documents if unlocked, otherwise the locked screen. */
@@ -592,12 +575,35 @@ class MainActivity : AppCompatActivity() {
         if (promptIfLocked) promptLockerUnlock()
     }
 
+    private val isLockerOpenOnScreen: Boolean
+        get() = binding.layoutSecureLocker.visibility == View.VISIBLE &&
+            binding.layoutLockerContent.visibility == View.VISIBLE
+
+    /** Gear menu: locker actions only while the locker is open, About always. */
+    private fun showSettingsMenu(anchor: View) {
+        val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
+        popup.menuInflater.inflate(R.menu.menu_toolbar_settings, popup.menu)
+        popup.menu.findItem(R.id.action_transfer).isVisible = isLockerOpenOnScreen
+        popup.menu.findItem(R.id.action_lock).isVisible = isLockerOpenOnScreen
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_transfer -> showVaultTransferOptions()
+                R.id.action_lock -> {
+                    SessionManager.lock()
+                    lockLockerInPlace()
+                    Toast.makeText(this, "Locker locked", Toast.LENGTH_SHORT).show()
+                }
+                R.id.action_about -> showAboutDialog()
+            }
+            true
+        }
+        popup.show()
+    }
+
     private fun showLockedLocker() {
         binding.layoutLockerContent.visibility = View.GONE
         binding.layoutLockerLocked.visibility = View.VISIBLE
         binding.fabAddDocument.hide()
-        binding.btnLockLocker.visibility = View.GONE
-        binding.btnVaultTransfer.visibility = View.GONE
     }
 
     /** Locks the locker and, if it's on screen, swaps the documents for the locked screen. */
@@ -632,8 +638,6 @@ class MainActivity : AppCompatActivity() {
         binding.fabAddDocument.show()
         binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
         binding.tvToolbarTitle.text = "Locker"
-        binding.btnLockLocker.visibility = View.VISIBLE
-        binding.btnVaultTransfer.visibility = View.VISIBLE
         migrateLockerKeyIfNeeded()
     }
 

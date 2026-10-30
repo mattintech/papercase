@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_transfer"
+        android:title="Transfer &amp; backup" />
+    <item
+        android:id="@+id/action_lock"
+        android:title="Lock now" />
+    <item
+        android:id="@+id/action_about"
+        android:title="About" />
+</menu>
