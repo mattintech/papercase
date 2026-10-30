@@ -13,3 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Machine-specific IDE state
+/.idea/deploymentTargetSelector.xml
+/.idea/deviceManager.xml
