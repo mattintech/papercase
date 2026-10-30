@@ -286,7 +286,7 @@ class DocumentViewerActivity : AppCompatActivity() {
                             attachment.fileName.endsWith(".pdf", ignoreCase = true)
 
                     if (isPdf) {
-                        renderPdfPages(decryptedBytes, itemBinding)
+                        renderPdfPages(decryptedBytes, itemBinding, attachment)
                     } else {
                         val bitmap = OrientedBitmap.decode(decryptedBytes)
                         withContext(Dispatchers.Main) {
@@ -332,36 +332,54 @@ class DocumentViewerActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun renderPdfPages(pdfBytes: ByteArray, itemBinding: ItemViewerAttachmentBinding) =
-        withContext(Dispatchers.IO) {
-            try {
-                // Write transient bytes to private cache file for PdfRenderer
-                val tempPdfFile = File(cacheDir, "temp_view_${System.currentTimeMillis()}.pdf")
-                FileOutputStream(tempPdfFile).use { it.write(pdfBytes) }
-
-                val pfd = ParcelFileDescriptor.open(tempPdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                val pdfRenderer = PdfRenderer(pfd)
-
-                if (pdfRenderer.pageCount > 0) {
-                    val page = pdfRenderer.openPage(0)
-                    val width = page.width * 2
-                    val height = page.height * 2
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    page.close()
-
-                    withContext(Dispatchers.Main) {
-                        itemBinding.ivAttachmentImage.setImageBitmap(bitmap)
+    /** Shows the first page of a PDF attachment. Always hides the item's spinner when done. */
+    private suspend fun renderPdfPages(
+        pdfBytes: ByteArray,
+        itemBinding: ItemViewerAttachmentBinding,
+        attachment: DocumentAttachment
+    ) = withContext(Dispatchers.IO) {
+        // PdfRenderer needs a file; it's deleted as soon as the page is drawn
+        val tempPdfFile = File(cacheDir, "temp_view_${System.currentTimeMillis()}.pdf")
+        var bitmap: Bitmap? = null
+        var pageCount = 0
+        try {
+            FileOutputStream(tempPdfFile).use { it.write(pdfBytes) }
+            ParcelFileDescriptor.open(tempPdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    pageCount = renderer.pageCount
+                    if (pageCount > 0) {
+                        renderer.openPage(0).use { page ->
+                            bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888).also {
+                                // PDF pages have no background of their own; without this they render transparent
+                                it.eraseColor(android.graphics.Color.WHITE)
+                                page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            }
+                        }
                     }
                 }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            tempPdfFile.delete()
+        }
 
-                pdfRenderer.close()
-                pfd.close()
-                tempPdfFile.delete()
-            } catch (e: Exception) {
-                e.printStackTrace()
+        withContext(Dispatchers.Main) {
+            itemBinding.progressDecrypt.visibility = View.GONE
+            val page = bitmap
+            if (page != null) {
+                itemBinding.ivAttachmentImage.setImageBitmap(page)
+                itemBinding.ivAttachmentImage.setOnClickListener {
+                    showFullScreenImage(page, attachment.getDisplayTitle())
+                }
+                if (pageCount > 1) {
+                    itemBinding.tvAttachmentSub.text = "${attachment.fileName} • page 1 of $pageCount • Share to see all pages"
+                }
+            } else {
+                itemBinding.tvAttachmentSub.text = "${attachment.fileName} • Can't preview this PDF. Use Share to open it."
             }
         }
+    }
 
     private fun promptBiometricForShare(doc: SecureDocument) {
         if (doc.attachments.isEmpty()) {
