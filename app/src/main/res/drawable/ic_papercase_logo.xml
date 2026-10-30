@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- In-app Papercase mark: the launcher icon's visible area on a rounded tile -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <path
+        android:fillColor="#0B57D0"
+        android:pathData="M16,0 H56 A16,16 0 0 1 72,16 V56 A16,16 0 0 1 56,72 H16 A16,16 0 0 1 0,56 V16 A16,16 0 0 1 16,0 Z" />
+    <group android:translateX="-18" android:translateY="-18">
+    <!-- Back sheet -->
+        <group android:rotation="8" android:pivotX="58" android:pivotY="44">
+            <path
+                android:fillColor="#D3E3FD"
+                android:pathData="M45,27 H69 A3,3 0 0 1 72,30 V60 A3,3 0 0 1 69,63 H45 A3,3 0 0 1 42,60 V30 A3,3 0 0 1 45,27 Z" />
+        </group>
+
+        <!-- Front sheet with text lines -->
+        <group android:rotation="-5" android:pivotX="50" android:pivotY="45">
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M37,29 H62 A3,3 0 0 1 65,32 V63 A3,3 0 0 1 62,66 H37 A3,3 0 0 1 34,63 V32 A3,3 0 0 1 37,29 Z" />
+            <path
+                android:fillAlpha="0.6"
+                android:fillColor="#0B57D0"
+                android:pathData="M40.3,36 H54.7 A1.3,1.3 0 0 1 56,37.3 V37.300000000000004 A1.3,1.3 0 0 1 54.7,38.6 H40.3 A1.3,1.3 0 0 1 39,37.300000000000004 V37.3 A1.3,1.3 0 0 1 40.3,36 Z" />
+            <path
+                android:fillAlpha="0.32"
+                android:fillColor="#0B57D0"
+                android:pathData="M40.3,41.5 H58.7 A1.3,1.3 0 0 1 60,42.8 V42.800000000000004 A1.3,1.3 0 0 1 58.7,44.1 H40.3 A1.3,1.3 0 0 1 39,42.800000000000004 V42.8 A1.3,1.3 0 0 1 40.3,41.5 Z M40.3,47 H51.7 A1.3,1.3 0 0 1 53,48.3 V48.300000000000004 A1.3,1.3 0 0 1 51.7,49.6 H40.3 A1.3,1.3 0 0 1 39,48.300000000000004 V48.3 A1.3,1.3 0 0 1 40.3,47 Z" />
+        </group>
+
+        <!-- Case -->
+        <path
+            android:fillColor="#062E6F"
+            android:pathData="M30,53 H78 V72 A7,7 0 0 1 71,79 H37 A7,7 0 0 1 30,72 Z" />
+        <path
+            android:fillColor="#0842A0"
+            android:pathData="M30,53 H78 V57 H30 Z" />
+
+        <!-- Clasp -->
+        <path
+            android:fillColor="#FFC857"
+            android:pathData="M51,51.5 H57 A3,3 0 0 1 60,54.5 V60 A3,3 0 0 1 57,63 H51 A3,3 0 0 1 48,60 V54.5 A3,3 0 0 1 51,51.5 Z" />
+        <path
+            android:fillColor="#062E6F"
+            android:pathData="M54,55.45 A1.8,1.8 0 1 0 54,59.05 A1.8,1.8 0 1 0 54,55.45 Z" />
+    </group>
+</vector>
