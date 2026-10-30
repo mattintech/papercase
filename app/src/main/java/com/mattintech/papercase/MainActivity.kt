@@ -636,7 +636,18 @@ class MainActivity : AppCompatActivity() {
         if (cards) {
             val columns = (resources.configuration.screenWidthDp / 180).coerceIn(2, 5)
             val current = rv.layoutManager as? GridLayoutManager
-            if (current?.spanCount != columns) rv.layoutManager = GridLayoutManager(this, columns)
+            if (current?.spanCount != columns) rv.layoutManager = GridLayoutManager(this, columns).apply {
+                // The last folder fills its row, so documents start on a row of their own and folder
+                // tiles aren't stretched to the height of a document card
+                spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                    override fun getSpanSize(position: Int): Int {
+                        val items = lockerAdapter.currentList
+                        val isLastFolder = items.getOrNull(position) is LockerItem.FolderItem &&
+                            items.getOrNull(position + 1) !is LockerItem.FolderItem
+                        return if (isLastFolder) columns - position % columns else 1
+                    }
+                }
+            }
         } else if (rv.layoutManager !is LinearLayoutManager || rv.layoutManager is GridLayoutManager) {
             rv.layoutManager = LinearLayoutManager(this)
         }
@@ -667,7 +678,10 @@ class MainActivity : AppCompatActivity() {
             LockerItem.FolderItem(
                 folder = f,
                 folderCount = FolderTree.children(folders, f.id).size,
-                documentCount = allDocuments.count { FolderTree.resolve(folders, it.folderId) == f.id }
+                documentCount = allDocuments.count { FolderTree.resolve(folders, it.folderId) == f.id },
+                expiredCount = FolderTree.subtree(folders, f.id).let { inside ->
+                    allDocuments.count { FolderTree.resolve(folders, it.folderId) in inside && LockerAdapter.isExpired(it) }
+                }
             )
         }
         val items = subfolders + sortDocuments(docsHere).map { LockerItem.DocItem(it) }

@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 sealed class LockerItem {
-    data class FolderItem(val folder: Folder, val folderCount: Int, val documentCount: Int) : LockerItem()
+    /** [expiredCount]: expired documents anywhere inside, so they aren't missed in subfolders. */
+    data class FolderItem(val folder: Folder, val folderCount: Int, val documentCount: Int, val expiredCount: Int = 0) : LockerItem()
     data class DocItem(val doc: SecureDocument) : LockerItem()
 }
 
@@ -88,7 +89,19 @@ class LockerAdapter(
             // In the grid, cards sit 6dp apart; in the list, rows line up with the documents
             if (cards) b.root.setMargins(6, 6) else b.root.setMargins(0, 12)
             b.tvFolderName.text = item.folder.name
-            b.tvFolderCount.text = countText(item.folderCount, item.documentCount)
+            val counts = countText(item.folderCount, item.documentCount)
+            if (item.expiredCount > 0) {
+                val expired = "${item.expiredCount} expired"
+                b.tvFolderCount.text = android.text.SpannableString("$counts · $expired").apply {
+                    setSpan(
+                        android.text.style.ForegroundColorSpan(MaterialColors.getColor(b.root, androidx.appcompat.R.attr.colorError)),
+                        length - expired.length, length, 0
+                    )
+                    setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), length - expired.length, length, 0)
+                }
+            } else {
+                b.tvFolderCount.text = counts
+            }
             b.root.setOnClickListener { onOpenFolder(item.folder) }
             b.btnMore.setOnClickListener { onFolderMore(item.folder, it) }
         }
@@ -105,6 +118,7 @@ class LockerAdapter(
         fun bind(doc: SecureDocument) {
             b.tvDocTitle.text = doc.title
             DocumentIcons.apply(b.ivDocIcon, doc)
+            highlightIfExpired(b.root, doc)
             b.ivPasswordLock.visibility = if (doc.isPasswordProtected) View.VISIBLE else View.GONE
             b.tvDocType.text = typeText(doc)
 
@@ -119,7 +133,8 @@ class LockerAdapter(
             if (doc.expirationDate.isNotBlank()) {
                 b.tvExpiration.visibility = View.VISIBLE
                 val expired = expiryStatus(doc) == Expiry.EXPIRED
-                b.tvExpiration.text = if (expired) "Expired: ${doc.expirationDate}" else "Expires: ${doc.expirationDate}"
+                b.tvExpiration.text = if (expired) "EXPIRED ${doc.expirationDate}" else "Expires: ${doc.expirationDate}"
+                b.tvExpiration.setTypeface(null, if (expired) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
                 b.tvExpiration.setTextColor(
                     MaterialColors.getColor(b.tvExpiration,
                         if (expired) androidx.appcompat.R.attr.colorError else com.google.android.material.R.attr.colorOnSurfaceVariant)
@@ -152,6 +167,7 @@ class LockerAdapter(
             b.root.setOnClickListener { onOpenDocument(doc) }
             b.btnMore.setOnClickListener { onDocumentMore(doc) }
             bindExpiry(doc)
+            highlightIfExpired(b.root, doc)
 
             // Placeholder until the thumbnail is ready; protected documents always keep it
             job?.cancel()
@@ -177,7 +193,7 @@ class LockerAdapter(
                 return
             }
             b.tvExpiryPill.visibility = View.VISIBLE
-            b.tvExpiryPill.text = if (status == Expiry.EXPIRED) "Expired ${doc.expirationDate}" else "Expires ${doc.expirationDate}"
+            b.tvExpiryPill.text = if (status == Expiry.EXPIRED) "EXPIRED" else "Expires ${doc.expirationDate}"
             val (bg, fg) = when (status) {
                 Expiry.EXPIRED -> MaterialColors.getColor(b.root, com.google.android.material.R.attr.colorErrorContainer) to
                     MaterialColors.getColor(b.root, com.google.android.material.R.attr.colorOnErrorContainer)
@@ -193,7 +209,21 @@ class LockerAdapter(
         }
     }
 
+    /** Expired documents get a red outline, so they stand out in both views. */
+    private fun highlightIfExpired(card: com.google.android.material.card.MaterialCardView, doc: SecureDocument) {
+        val d = card.resources.displayMetrics.density
+        if (expiryStatus(doc) == Expiry.EXPIRED) {
+            card.strokeColor = MaterialColors.getColor(card, androidx.appcompat.R.attr.colorError)
+            card.strokeWidth = (2 * d).toInt()
+        } else {
+            card.strokeColor = MaterialColors.getColor(card, com.google.android.material.R.attr.colorOutlineVariant)
+            card.strokeWidth = (1 * d).toInt()
+        }
+    }
+
     private enum class Expiry { NONE, OK, SOON, EXPIRED }
+
+
 
     /** Soon = inside the document's reminder window (or 30 days if it has no reminder). */
     private fun expiryStatus(doc: SecureDocument): Expiry {
@@ -201,7 +231,7 @@ class LockerAdapter(
         val today = LocalDate.now()
         val window = if (doc.reminderDays > 0) doc.reminderDays.toLong() else 30L
         return when {
-            date.isBefore(today) -> Expiry.EXPIRED
+            isExpired(doc) -> Expiry.EXPIRED
             !date.minusDays(window).isAfter(today) -> Expiry.SOON
             else -> Expiry.OK
         }
@@ -221,8 +251,11 @@ class LockerAdapter(
     }
 
     companion object {
-        const val TYPE_FOLDER = 0
-        const val TYPE_ROW = 1
-        const val TYPE_CARD = 2
+        fun isExpired(doc: SecureDocument): Boolean =
+            ExpiryDates.parse(doc.expirationDate)?.isBefore(LocalDate.now()) == true
+
+        private const val TYPE_FOLDER = 0
+        private const val TYPE_ROW = 1
+        private const val TYPE_CARD = 2
     }
 }
