@@ -102,6 +102,8 @@ data class SecureDocument(
     val passwordSaltBase64: String = "",
     val encryptedDekBase64: String = "",
     val dekIvBase64: String = "",
+    /** Days before [expirationDate] to send a reminder; 0 = no reminder. */
+    val reminderDays: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -156,6 +158,7 @@ data class SecureDocument(
             put("passwordSaltBase64", passwordSaltBase64)
             put("encryptedDekBase64", encryptedDekBase64)
             put("dekIvBase64", dekIvBase64)
+            put("reminderDays", reminderDays)
             put("createdAt", createdAt)
             put("updatedAt", updatedAt)
 
@@ -191,6 +194,7 @@ data class SecureDocument(
                 passwordSaltBase64 = json.optString("passwordSaltBase64", ""),
                 encryptedDekBase64 = json.optString("encryptedDekBase64", ""),
                 dekIvBase64 = json.optString("dekIvBase64", ""),
+                reminderDays = json.optInt("reminderDays", 0),
                 createdAt = json.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
             )

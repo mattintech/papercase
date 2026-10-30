@@ -101,6 +101,33 @@ class KdbxBackupFormatTest {
     }
 
     @Test
+    fun backupPasswordIsUsedExactlyAsTyped() {
+        val out = ByteArrayOutputStream()
+        runBlocking {
+            KdbxBackupFormat.write(out, "Correct horse battery", listOf(passport), emptyMap(), exactPassword = true) { _, att ->
+                bytes.getValue(att.id)
+            }
+        }
+        val file = out.toByteArray()
+        assertEquals(1, KdbxBackupFormat.read(ByteArrayInputStream(file), "Correct horse battery").documents.size)
+        try {
+            KdbxBackupFormat.read(ByteArrayInputStream(file), "CORRECTHORSEBATTERY")
+            fail("password must match exactly")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("incorrect"))
+        }
+    }
+
+    @Test
+    fun keepsReminderSetting() {
+        val out = ByteArrayOutputStream()
+        runBlocking {
+            KdbxBackupFormat.write(out, token, listOf(passport.copy(reminderDays = 180)), emptyMap()) { _, att -> bytes.getValue(att.id) }
+        }
+        assertEquals(180, KdbxBackupFormat.read(ByteArrayInputStream(out.toByteArray()), token).documents.single().reminderDays)
+    }
+
+    @Test
     fun wrongTokenIsRejected() {
         try {
             KdbxBackupFormat.read(ByteArrayInputStream(backup()), "PCASE-AAAA-AAAA-AAAA-AAAA-AAAA")

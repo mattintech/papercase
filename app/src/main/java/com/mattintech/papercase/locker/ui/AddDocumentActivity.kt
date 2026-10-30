@@ -1,5 +1,10 @@
 package com.mattintech.papercase.locker.ui
 
+import java.time.format.FormatStyle
+import java.time.format.DateTimeFormatter
+import com.mattintech.papercase.locker.reminders.ReminderOptions
+import com.mattintech.papercase.locker.reminders.ExpiryDates
+import com.mattintech.papercase.data.PreferencesManager
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -89,6 +94,11 @@ class AddDocumentActivity : AppCompatActivity() {
     private lateinit var repository: SecureLockerRepository
 
     private var editingDocumentId: String? = null
+    private lateinit var prefs: PreferencesManager
+
+    /** Days before expiry to remind; follows the document type until the user picks one. */
+    private var reminderDays = 0
+    private var reminderChosen = false
     private var existingDocument: SecureDocument? = null
 
     // Attachment Slots
@@ -118,6 +128,14 @@ class AddDocumentActivity : AppCompatActivity() {
             SessionManager.isExternalOperationActive = false
             SessionManager.keepAlive()
             if (uri != null) handleSelectedUri(uri)
+        }
+
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                Toast.makeText(this, "Notifications are off, so reminders can't be shown. You can allow them in system settings.", Toast.LENGTH_LONG).show()
+            }
+            validateAndSave()
         }
 
     // Camera launcher
@@ -180,6 +198,7 @@ class AddDocumentActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         repository = SecureLockerRepository(this)
+        prefs = PreferencesManager(this)
         editingDocumentId = intent.getStringExtra(EXTRA_DOCUMENT_ID)
 
         setupWindowInsets()
@@ -227,6 +246,7 @@ class AddDocumentActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
 
         // Date picker for expiry date
+        setupReminderField()
         binding.etExpiry.setOnClickListener { showDatePicker() }
         binding.tilExpiry.setEndIconOnClickListener { showDatePicker() }
 
@@ -286,11 +306,77 @@ class AddDocumentActivity : AppCompatActivity() {
 
         // Save Document button
         binding.btnSaveDocument.setOnClickListener {
-            validateAndSave()
+            if (shouldAskAboutReminders()) askAboutReminders() else validateAndSave()
         }
     }
 
+    private fun setupReminderField() {
+        val labels = ReminderOptions.ALL.map { it.label }
+        binding.actvReminder.setSimpleItems(labels.toTypedArray())
+        binding.actvReminder.setOnItemClickListener { _, _, position, _ ->
+            reminderDays = ReminderOptions.ALL[position].days
+            reminderChosen = true
+            updateReminderHelper()
+        }
+        setReminder(ReminderOptions.defaultFor(getSelectedDocumentType()))
+    }
+
+    private fun setReminder(days: Int) {
+        reminderDays = days
+        binding.actvReminder.setText(ReminderOptions.label(days), false)
+        updateReminderHelper()
+    }
+
+    private fun updateReminderHelper() {
+        val expiry = ExpiryDates.parse(binding.etExpiry.text?.toString().orEmpty())
+        binding.tilReminder.helperText = when {
+            reminderDays == 0 -> null
+            expiry == null -> "Add an expiration date to get a reminder"
+            else -> {
+                val on = expiry.minusDays(reminderDays.toLong())
+                    .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+                if (prefs.isExpiryRemindersEnabled) "You'll be reminded on $on" else "Reminder on $on (reminders are off in Settings)"
+            }
+        }
+    }
+
+    /** Ask once, the first time someone saves a document with a reminder. */
+    private fun shouldAskAboutReminders(): Boolean =
+        reminderDays > 0 &&
+            ExpiryDates.parse(binding.etExpiry.text?.toString().orEmpty()) != null &&
+            !prefs.isExpiryRemindersEnabled &&
+            !prefs.hasAskedAboutExpiryReminders &&
+            binding.etTitle.text?.isNotBlank() == true
+
+    private fun askAboutReminders() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Get expiry reminders?")
+            .setMessage(
+                "Papercase can send you a notification before your documents expire, so you have time to renew them. " +
+                    "You choose how early on each document.\n\n" +
+                    "On the lock screen the notification only says that a document expires soon."
+            )
+            .setPositiveButton("Turn on") { _, _ ->
+                prefs.isExpiryRemindersEnabled = true
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    validateAndSave()
+                }
+            }
+            .setNegativeButton("Not now") { _, _ ->
+                prefs.hasAskedAboutExpiryReminders = true
+                validateAndSave()
+            }
+            .show()
+    }
+
     private fun updateDocumentTypeUI(type: DocumentType) {
+        if (!reminderChosen && editingDocumentId == null && ::prefs.isInitialized && binding.actvReminder.adapter != null) {
+            setReminder(ReminderOptions.defaultFor(type))
+        }
         if (type == DocumentType.PASSPORT) {
             binding.tvFrontHeader.text = "Photo & Details Page"
             binding.tvBackHeader.text = "Back Cover / Signature"
@@ -361,6 +447,8 @@ class AddDocumentActivity : AppCompatActivity() {
         binding.etTitle.setText(doc.title)
         binding.etNumber.setText(doc.documentNumber)
         binding.etExpiry.setText(doc.expirationDate)
+        reminderChosen = true
+        setReminder(doc.reminderDays)
         binding.actvCountry.setText(doc.issuingCountry, false)
         binding.etNotes.setText(doc.notes)
 
@@ -422,6 +510,7 @@ class AddDocumentActivity : AppCompatActivity() {
         picker.addOnPositiveButtonClickListener { selectionMs ->
             val formattedDate = utcFormatter.format(Date(selectionMs))
             binding.etExpiry.setText(formattedDate)
+            updateReminderHelper()
         }
 
         picker.show(supportFragmentManager, "EXPIRY_PICKER")
@@ -839,6 +928,7 @@ class AddDocumentActivity : AppCompatActivity() {
                     passwordSaltBase64 = passwordSaltBase64,
                     encryptedDekBase64 = encryptedDekBase64,
                     dekIvBase64 = dekIvBase64,
+                    reminderDays = reminderDays,
                     updatedAt = System.currentTimeMillis()
                 ) ?: SecureDocument(
                     title = title,
@@ -851,7 +941,8 @@ class AddDocumentActivity : AppCompatActivity() {
                     isPasswordProtected = isPasswordProtect,
                     passwordSaltBase64 = passwordSaltBase64,
                     encryptedDekBase64 = encryptedDekBase64,
-                    dekIvBase64 = dekIvBase64
+                    dekIvBase64 = dekIvBase64,
+                    reminderDays = reminderDays
                 )
 
                 val success = repository.saveDocument(docToSave)

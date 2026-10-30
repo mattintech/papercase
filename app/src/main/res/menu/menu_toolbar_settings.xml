@@ -4,6 +4,9 @@
         android:id="@+id/action_transfer"
         android:title="Transfer &amp; backup" />
     <item
+        android:id="@+id/action_settings"
+        android:title="Settings" />
+    <item
         android:id="@+id/action_lock"
         android:title="Lock now" />
     <item

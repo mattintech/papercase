@@ -5,6 +5,8 @@ import android.app.Application
 import android.os.Bundle
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.clipboard.ClipboardSecurityManager
+import com.mattintech.papercase.locker.backup.DailyWorker
+import com.mattintech.papercase.locker.reminders.ReminderNotifier
 
 class PapercaseApp : Application() {
 
@@ -13,7 +15,9 @@ class PapercaseApp : Application() {
     override fun onCreate() {
         super.onCreate()
         ClipboardSecurityManager.createNotificationChannel(this)
+        ReminderNotifier.createChannel(this)
         SessionManager.init(this)
+        DailyWorker.schedule(this)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {

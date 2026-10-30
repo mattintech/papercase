@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: October 29, 2026_
+_Last updated: October 29, 2026 (added expiry reminders and automatic backups)_
 
 Papercase is an open-source app for storing your documents on your own device. This policy explains what the app does with your information. In short: **Papercase does not collect, store, or share any of your data. Everything stays on your devices.**
 
@@ -21,12 +21,13 @@ Documents, photos, notes and your optional master passphrase are stored **only o
 | Camera | To photograph documents and scan transfer QR codes. Photos are saved only inside the encrypted locker. |
 | Biometric | To unlock the locker and your passphrase with your fingerprint or device PIN. Android handles the biometric check; the app never sees your fingerprint. |
 | Internet, network and Wi-Fi state | Only for phone-to-phone transfers that you start, directly between your own devices on the same local network. Nothing is sent to the internet. |
-| Notifications and foreground service | To show the clipboard auto-clear countdown and to tell you when the locker has locked. |
+| Notifications and foreground service | To show the clipboard auto-clear countdown, to tell you when the locker has locked, and for expiry reminders you turn on. On the lock screen, a reminder only says that a document expires soon. |
 
 ## Transfers and backups
 
 - **Phone-to-phone transfer** sends your encrypted locker directly to another device on your local network. It happens only when you start it and approve the receiving device.
-- **Backup files** are created only when you export one, and saved wherever you choose. They are encrypted, and can only be opened with the token shown at export.
+- **Backup files** are created when you export one, or automatically if you turn on automatic backups, and saved only to the folder you choose. They are encrypted, and can only be opened with the export token or the backup password you set.
+- **Expiry reminders** keep a small encrypted list of document titles and expiry dates on your device, so reminders can be sent without unlocking the locker. It never leaves your device.
 
 What you do with a backup file afterwards (for example uploading it to a cloud drive) is up to you, and is covered by that service's own privacy policy.
 
