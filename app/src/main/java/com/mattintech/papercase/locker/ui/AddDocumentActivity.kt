@@ -26,13 +26,16 @@ import com.google.android.material.datepicker.MaterialDatePicker
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
+import com.mattintech.papercase.crypto.BiometricAuthHelper
 import com.mattintech.papercase.data.PreferencesManager
 import com.mattintech.papercase.databinding.ActivityAddDocumentBinding
 import com.mattintech.papercase.databinding.ItemAttachmentChipBinding
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
+import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.data.IssuingAuthorityHelper
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
+import com.mattintech.papercase.locker.model.DocumentIcons
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.reminders.ExpiryDates
@@ -102,6 +105,8 @@ class AddDocumentActivity : AppCompatActivity() {
 
     /** Days before expiry to remind; follows the document type until the user picks one. */
     private var reminderDays = 0
+    private var iconKey = ""
+    private var iconColor = ""
     private var reminderChosen = false
     private var existingDocument: SecureDocument? = null
 
@@ -226,6 +231,7 @@ class AddDocumentActivity : AppCompatActivity() {
                         bytes = out.toByteArray()
                     )
                 )
+                if (slot == AttachmentSlot.OTHER) promptNextPage()
             }
         }
     }
@@ -311,6 +317,14 @@ class AddDocumentActivity : AppCompatActivity() {
         // Document Type Chip change
         binding.chipGroupDocType.setOnCheckedStateChangeListener { _, _ ->
             updateDocumentTypeUI(getSelectedDocumentType())
+        }
+
+        binding.btnChangeIcon.setOnClickListener {
+            IconPickerSheet(this, getSelectedDocumentType(), iconKey, iconColor) { key, colour ->
+                iconKey = key
+                iconColor = colour
+                renderIcon()
+            }.show()
         }
 
         // Front Card buttons
@@ -419,7 +433,13 @@ class AddDocumentActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Until an icon is chosen, the icon follows the document type. */
+    private fun renderIcon() {
+        DocumentIcons.apply(binding.ivDocIcon, DocumentIcons.iconRes(iconKey, getSelectedDocumentType()), iconColor)
+    }
+
     private fun updateDocumentTypeUI(type: DocumentType) {
+        renderIcon()
         if (!reminderChosen && editingDocumentId == null && ::prefs.isInitialized && binding.actvReminder.adapter != null) {
             setReminder(ReminderOptions.defaultFor(type))
         }
@@ -491,6 +511,8 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun populateDocumentFields(doc: SecureDocument) {
         binding.toolbar.title = "Edit Document"
         binding.etTitle.setText(doc.title)
+        iconKey = doc.iconKey
+        iconColor = doc.iconColor
         binding.etNumber.setText(doc.documentNumber)
         binding.etExpiry.setText(doc.expirationDate)
         reminderChosen = true
@@ -629,8 +651,8 @@ class AddDocumentActivity : AppCompatActivity() {
 
     private fun showAddOtherPhotoDialog() {
         MaterialAlertDialogBuilder(this)
-            .setTitle("Add Additional Photo")
-            .setItems(arrayOf("Take Photo with Camera", "Choose from Gallery")) { _, which ->
+            .setTitle("Add page ${pageCount() + 1}")
+            .setItems(arrayOf("Take photo", "Choose from gallery")) { _, which ->
                 if (which == 0) {
                     captureFromCamera(AttachmentSlot.OTHER)
                 } else {
@@ -640,6 +662,22 @@ class AddDocumentActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    /** After each page: keep going for multi-page documents. */
+    private fun promptNextPage() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Page ${pageCount()} added")
+            .setMessage("Add the next page of this document?")
+            .setPositiveButton("Take photo") { _, _ -> captureFromCamera(AttachmentSlot.OTHER) }
+            .setNeutralButton("Gallery") { _, _ -> pickFromGallery(AttachmentSlot.OTHER) }
+            .setNegativeButton("Done", null)
+            .show()
+    }
+
+    private fun AttachmentItem.isPdfItem() =
+        mimeType.contains("pdf", ignoreCase = true) || fileName.endsWith(".pdf", ignoreCase = true)
+
+    private fun pageCount() = otherAttachments.count { !it.isPdfItem() }
 
     private fun showRenameVisaDialog(item: AttachmentItem) {
         val input = DialogInput(this, hint = "Visa label")
@@ -756,12 +794,28 @@ class AddDocumentActivity : AppCompatActivity() {
 
         // 4. Render Other Attachments List
         binding.layoutOtherList.removeAllViews()
+        var pageNumber = 0
         otherAttachments.forEachIndexed { index, other ->
             val itemBinding = ItemAttachmentChipBinding.inflate(layoutInflater, binding.layoutOtherList, false)
-            val isPdf = other.mimeType.contains("pdf", ignoreCase = true) || other.fileName.endsWith(".pdf", ignoreCase = true)
-            itemBinding.tvAttachmentSlotBadge.text = if (isPdf) "PDF" else "EXTRA"
-            itemBinding.tvFileName.text = other.fileName
+            val isPdf = other.isPdfItem()
+            if (isPdf) {
+                itemBinding.tvAttachmentSlotBadge.text = "PDF"
+                itemBinding.tvFileName.text = other.fileName
+            } else {
+                pageNumber++
+                itemBinding.tvAttachmentSlotBadge.text = "PAGE $pageNumber"
+                itemBinding.tvFileName.text = "Page $pageNumber"
+            }
             itemBinding.tvFileSize.text = formatFileSize(other.sizeBytes)
+
+            // Reorder pages (and files) within the document
+            if (index > 0) {
+                itemBinding.btnMoveUp.visibility = View.VISIBLE
+                itemBinding.btnMoveUp.setOnClickListener {
+                    otherAttachments.add(index - 1, otherAttachments.removeAt(index))
+                    renderAttachmentsUI()
+                }
+            }
 
             if (isPdf) {
                 itemBinding.ivAttachmentPreview.setImageResource(R.drawable.ic_description)
@@ -976,6 +1030,8 @@ class AddDocumentActivity : AppCompatActivity() {
                     encryptedDekBase64 = encryptedDekBase64,
                     dekIvBase64 = dekIvBase64,
                     reminderDays = reminderDays,
+                    iconKey = iconKey,
+                    iconColor = iconColor,
                     updatedAt = System.currentTimeMillis()
                 ) ?: SecureDocument(
                     title = title,
@@ -989,7 +1045,9 @@ class AddDocumentActivity : AppCompatActivity() {
                     passwordSaltBase64 = passwordSaltBase64,
                     encryptedDekBase64 = encryptedDekBase64,
                     dekIvBase64 = dekIvBase64,
-                    reminderDays = reminderDays
+                    reminderDays = reminderDays,
+                    iconKey = iconKey,
+                    iconColor = iconColor
                 )
 
                 val success = repository.saveDocument(docToSave)
@@ -1003,10 +1061,30 @@ class AddDocumentActivity : AppCompatActivity() {
                     Toast.makeText(this@AddDocumentActivity, "Failed to save document", Toast.LENGTH_LONG).show()
                     binding.btnSaveDocument.isEnabled = true
                 }
+            } catch (e: LockerLockedException) {
+                // The locker key only works for a while after the last unlock, even while editing.
+                // Ask again and retry, so nothing typed or captured is lost.
+                binding.btnSaveDocument.isEnabled = true
+                unlockAndRetrySave()
             } catch (e: Exception) {
                 Toast.makeText(this@AddDocumentActivity, "Error saving: ${e.message}", Toast.LENGTH_LONG).show()
                 binding.btnSaveDocument.isEnabled = true
             }
         }
+    }
+
+    private fun unlockAndRetrySave() {
+        BiometricAuthHelper.promptGeneralUnlock(
+            activity = this,
+            title = "Unlock to save",
+            subtitle = "The locker locked while you were editing. Your changes are kept.",
+            onSuccess = {
+                SessionManager.markAuthenticated()
+                validateAndSave()
+            },
+            onError = { _, _ ->
+                Toast.makeText(this, "Not saved. Tap Save to try again.", Toast.LENGTH_LONG).show()
+            }
+        )
     }
 }

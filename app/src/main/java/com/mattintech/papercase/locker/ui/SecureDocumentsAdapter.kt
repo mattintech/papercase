@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mattintech.papercase.R
 import com.mattintech.papercase.databinding.ItemSecureDocumentBinding
+import com.mattintech.papercase.locker.model.DocumentIcons
 import com.mattintech.papercase.locker.model.SecureDocument
 
 class SecureDocumentsAdapter(
@@ -33,7 +34,7 @@ class SecureDocumentsAdapter(
 
         fun bind(doc: SecureDocument) {
             binding.tvDocTitle.text = doc.title
-            binding.ivDocIcon.setImageResource(doc.type.iconRes)
+            DocumentIcons.apply(binding.ivDocIcon, doc)
             binding.ivPasswordLock.visibility = if (doc.isPasswordProtected) View.VISIBLE else View.GONE
 
             val typeDesc = if (doc.issuingCountry.isNotBlank()) {

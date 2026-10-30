@@ -309,6 +309,8 @@ internal object KdbxBackupFormat {
             encryptedDekBase64 = stored?.encryptedDekBase64.orEmpty(),
             dekIvBase64 = stored?.dekIvBase64.orEmpty(),
             reminderDays = stored?.reminderDays ?: 0,
+            iconKey = stored?.iconKey.orEmpty(),
+            iconColor = stored?.iconColor.orEmpty(),
             createdAt = createdAt,
             updatedAt = updatedAt
         )

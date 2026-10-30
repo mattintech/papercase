@@ -43,6 +43,9 @@ data class DocumentAttachment(
     val slot: AttachmentSlot = AttachmentSlot.FRONT,
     val customTitle: String = ""
 ) {
+    val isPdf: Boolean
+        get() = mimeType.contains("pdf", ignoreCase = true) || fileName.endsWith(".pdf", ignoreCase = true)
+
     fun getDisplayTitle(): String {
         if (customTitle.isNotBlank()) return customTitle
         return when (slot) {
@@ -104,6 +107,10 @@ data class SecureDocument(
     val dekIvBase64: String = "",
     /** Days before [expirationDate] to send a reminder; 0 = no reminder. */
     val reminderDays: Int = 0,
+    /** Chosen icon ([DocumentIcons] key); blank = the document type's icon. */
+    val iconKey: String = "",
+    /** Chosen icon colour ([DocumentIcons] colour key); blank = the app's accent colour. */
+    val iconColor: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -138,8 +145,13 @@ data class SecureDocument(
             parts.add("$visaCount ${if (visaCount == 1) "Visa" else "Visas"}")
         }
 
-        if (otherCount > 0) {
-            parts.add("$otherCount ${if (otherCount == 1) "File" else "Files"}")
+        val pageCount = getOtherAttachments().count { !it.isPdf }
+        val fileCount = otherCount - pageCount
+        if (pageCount > 0) {
+            parts.add("$pageCount ${if (pageCount == 1) "Page" else "Pages"}")
+        }
+        if (fileCount > 0) {
+            parts.add("$fileCount ${if (fileCount == 1) "PDF" else "PDFs"}")
         }
 
         return if (parts.isNotEmpty()) parts.joinToString(" • ") else ""
@@ -159,6 +171,8 @@ data class SecureDocument(
             put("encryptedDekBase64", encryptedDekBase64)
             put("dekIvBase64", dekIvBase64)
             put("reminderDays", reminderDays)
+            put("iconKey", iconKey)
+            put("iconColor", iconColor)
             put("createdAt", createdAt)
             put("updatedAt", updatedAt)
 
@@ -195,6 +209,8 @@ data class SecureDocument(
                 encryptedDekBase64 = json.optString("encryptedDekBase64", ""),
                 dekIvBase64 = json.optString("dekIvBase64", ""),
                 reminderDays = json.optInt("reminderDays", 0),
+                iconKey = json.optString("iconKey", ""),
+                iconColor = json.optString("iconColor", ""),
                 createdAt = json.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
             )
