@@ -406,7 +406,7 @@ class SecureLockerRepository(private val context: Context) {
             throw e
         }
 
-        AutoBackupManager.migratePassword(context, legacy, authBound)
+        AutoBackupManager.migrateSecrets(context, legacy, authBound)
 
         // New catalog is in place: remove the legacy copies and key
         documents.filter { !it.isPasswordProtected }

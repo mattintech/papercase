@@ -47,6 +47,8 @@ import com.mattintech.papercase.locker.crypto.LockerKeyInvalidatedException
 import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ReminderNotifier
+import com.mattintech.papercase.locker.reminders.ReminderStore
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
 import com.mattintech.papercase.locker.transfer.ConflictResolutionStrategy
 import com.mattintech.papercase.locker.transfer.P2pNetworkHelper
@@ -912,6 +914,7 @@ class MainActivity : AppCompatActivity() {
                         isLockerUnlocked = true
                         val decryptedPassphrase =
                             KeystoreHelper.decryptWithCipher(authenticatedCipher, payload.ciphertext)
+                        keepPassphraseForBackups(decryptedPassphrase)
 
                         val timeout = if (prefs.isAutoClearEnabled) prefs.clearTimeoutSeconds else 0
                         ClipboardSecurityManager.copyToClipboard(
@@ -957,6 +960,7 @@ class MainActivity : AppCompatActivity() {
                     isLockerUnlocked = true
                     val decryptedPassphrase =
                         KeystoreHelper.decryptWithCipher(authenticatedCipher, payload.ciphertext)
+                    keepPassphraseForBackups(decryptedPassphrase)
                     showDecryptedPassphraseDialog(decryptedPassphrase)
                 },
                 onError = { _, errorMsg ->
@@ -1010,6 +1014,7 @@ class MainActivity : AppCompatActivity() {
                         isLockerUnlocked = true
                         val payload = KeystoreHelper.encryptWithCipher(authenticatedCipher, passphrase)
                         prefs.saveEncryptedPassphrase(payload)
+                        keepPassphraseForBackups(passphrase)
                         updateVaultStatusUI()
                         Toast.makeText(this, "Passphrase securely stored in keystore!", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
@@ -1022,6 +1027,14 @@ class MainActivity : AppCompatActivity() {
             )
         } catch (e: Exception) {
             Toast.makeText(this, "Error initializing encryption key: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Backups include the passphrase; this keeps a copy they can read (see AutoBackupManager). */
+    private fun keepPassphraseForBackups(passphrase: String) {
+        lifecycleScope.launch {
+            // Needs the locker key; if it isn't usable right now, the next unlock and copy tries again
+            runCatching { AutoBackupManager.rememberPassphrase(this@MainActivity, passphrase) }
         }
     }
 
@@ -1047,6 +1060,7 @@ class MainActivity : AppCompatActivity() {
             .setMessage("This will erase the stored passphrase and destroy the hardware encryption key from Android Keystore. This cannot be undone.")
             .setPositiveButton("Remove") { _, _ ->
                 prefs.clearStoredPassphrase()
+                AutoBackupManager.forgetPassphrase(this)
                 ClipboardSecurityManager.clearClipboard(this)
                 updateVaultStatusUI()
                 Toast.makeText(this, "Passphrase deleted", Toast.LENGTH_SHORT).show()
@@ -1419,6 +1433,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showConflictResolutionOrCommit(report: VaultConflictReport) {
         if (!report.hasChanges) {
+            restoreBackupExtras(report, replaced = false)
             Toast.makeText(this, "Already up to date. Nothing to import.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1482,6 +1497,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 loadSecureLockerDocuments()
+                restoreBackupExtras(report, replaced = strategy == ConflictResolutionStrategy.REPLACE_ALL)
             } catch (e: Exception) {
                 MaterialAlertDialogBuilder(this@MainActivity)
                     .setTitle("Import Error")
@@ -1490,6 +1506,30 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+
+    /**
+     * Settings, passphrase and reminder status from a backup, once its documents are in. Settings are
+     * only taken on a new phone or when replacing the locker, so a merge keeps this phone's choices.
+     */
+    private fun restoreBackupExtras(report: VaultConflictReport, replaced: Boolean) {
+        val extras = report.extras
+        extras.settings?.let { prefs.importSettings(it, replaceSettings = replaced || report.localWasEmpty) }
+        ReminderStore.restoreState(this, extras.reminders)
+        if (prefs.isExpiryRemindersEnabled && !ReminderNotifier.canNotify(this) &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        ) {
+            requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val passphrase = extras.passphrase ?: return
+        if (prefs.hasStoredPassphrase) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Restore passphrase?")
+            .setMessage("This backup includes your master passphrase. Save it on this phone?")
+            .setPositiveButton(R.string.btn_save) { _, _ -> savePassphraseWithBiometrics(passphrase) }
+            .setNegativeButton("Not now", null)
+            .show()
     }
 
     // ==========================================

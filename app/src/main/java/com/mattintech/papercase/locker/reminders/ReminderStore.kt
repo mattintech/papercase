@@ -5,7 +5,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.mattintech.papercase.locker.model.SecureDocument
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -36,18 +35,7 @@ object ReminderStore {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
             val array = JSONArray(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8))
-            (0 until array.length()).map { i ->
-                val o = array.getJSONObject(i)
-                ReminderEntry(
-                    docId = o.getString("docId"),
-                    title = o.optString("title"),
-                    expiresOn = o.getString("expiresOn"),
-                    remindOn = o.getString("remindOn"),
-                    notifiedEarly = o.optBoolean("notifiedEarly"),
-                    lastExpiredNotice = o.optString("lastExpiredNotice").ifEmpty { null },
-                    stopped = o.optBoolean("stopped"),
-                )
-            }
+            (0 until array.length()).map { i -> ReminderEntry.fromJson(array.getJSONObject(i)) }
         } catch (e: Exception) {
             // Unreadable (e.g. key lost): it's rebuilt from the locker on the next save
             e.printStackTrace()
@@ -62,17 +50,7 @@ object ReminderStore {
             return
         }
         val array = JSONArray()
-        entries.forEach { e ->
-            array.put(JSONObject().apply {
-                put("docId", e.docId)
-                put("title", e.title)
-                put("expiresOn", e.expiresOn)
-                put("remindOn", e.remindOn)
-                put("notifiedEarly", e.notifiedEarly)
-                e.lastExpiredNotice?.let { put("lastExpiredNotice", it) }
-                put("stopped", e.stopped)
-            })
-        }
+        entries.forEach { array.put(it.toJson()) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val out = cipher.iv + cipher.doFinal(array.toString().toByteArray(Charsets.UTF_8))
@@ -89,6 +67,21 @@ object ReminderStore {
     /** "Stop reminders" from a notification. Kept until the document gets a new expiry date. */
     fun stop(context: Context, docId: String) = synchronized(lock) {
         save(context, load(context).map { if (it.docId == docId) it.copy(stopped = true) else it })
+    }
+
+    /**
+     * After a restore: carries over "already notified" and "stopped" from the backup for documents
+     * whose dates are unchanged, so restoring doesn't repeat reminders the user has dealt with.
+     */
+    fun restoreState(context: Context, backedUp: List<ReminderEntry>) = synchronized(lock) {
+        if (backedUp.isEmpty()) return
+        val saved = backedUp.associateBy { it.docId }
+        save(context, load(context).map { e ->
+            val b = saved[e.docId]
+            if (b != null && b.expiresOn == e.expiresOn && b.remindOn == e.remindOn) {
+                e.copy(notifiedEarly = b.notifiedEarly, lastExpiredNotice = b.lastExpiredNotice, stopped = b.stopped)
+            } else e
+        })
     }
 
     fun clear(context: Context) = synchronized(lock) {

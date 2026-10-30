@@ -214,7 +214,8 @@ class AddDocumentActivity : AppCompatActivity() {
         val title = activeVisaTitle
         lifecycleScope.launch(Dispatchers.IO) {
             val out = java.io.ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            val photo = ImageMetadataStripper.shrink(bitmap)
+            photo.compress(Bitmap.CompressFormat.JPEG, ImageMetadataStripper.JPEG_QUALITY, out)
             withContext(Dispatchers.Main) {
                 addAttachmentItem(
                     AttachmentItem.Pending(

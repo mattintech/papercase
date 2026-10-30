@@ -120,6 +120,44 @@
 
                         </com.google.android.material.chip.ChipGroup>
 
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Backups to keep"
+                            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+                        <com.google.android.material.chip.ChipGroup
+                            android:id="@+id/chipGroupKeep"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            app:selectionRequired="true"
+                            app:singleSelection="true">
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chipKeep2"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="2" />
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chipKeep5"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="5" />
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chipKeep10"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="10" />
+
+                        </com.google.android.material.chip.ChipGroup>
+
                         <!-- Folder -->
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -202,6 +240,15 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="16dp"
                             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+
+                        <TextView
+                            android:id="@+id/tvBackupSize"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:visibility="gone" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnBackupNow"

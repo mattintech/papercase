@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
+import android.text.format.Formatter
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -84,6 +86,13 @@ class LockerSettingsActivity : AppCompatActivity() {
         binding.chipGroupFrequency.setOnCheckedStateChangeListener { _, ids ->
             if (updatingUi) return@setOnCheckedStateChangeListener
             AutoBackupManager.setFrequency(this, if (ids.firstOrNull() == binding.chipDaily.id) Frequency.DAILY else Frequency.WEEKLY)
+            render()
+        }
+
+        binding.chipGroupKeep.setOnCheckedStateChangeListener { _, ids ->
+            if (updatingUi) return@setOnCheckedStateChangeListener
+            val count = keepChips().entries.firstOrNull { it.value.id == ids.firstOrNull() }?.key ?: return@setOnCheckedStateChangeListener
+            AutoBackupManager.setKeepCount(this, count)
             render()
         }
 
@@ -200,6 +209,9 @@ class LockerSettingsActivity : AppCompatActivity() {
         val frequency = AutoBackupManager.frequency(this)
         binding.chipGroupFrequency.check(if (frequency == Frequency.DAILY) binding.chipDaily.id else binding.chipWeekly.id)
 
+        val keep = AutoBackupManager.keepCount(this)
+        (keepChips()[keep] ?: binding.chipKeep5).let { binding.chipGroupKeep.check(it.id) }
+
         binding.tvBackupFolder.text = AutoBackupManager.folderName(this) ?: "Not chosen"
         binding.btnChooseFolder.text = if (AutoBackupManager.folder(this) == null) "Choose" else "Change"
         val hasPassword = AutoBackupManager.hasPassword(this)
@@ -208,12 +220,28 @@ class LockerSettingsActivity : AppCompatActivity() {
 
         binding.tvBackupStatus.text = backupStatus(enabled, frequency)
         binding.btnBackupNow.isEnabled = AutoBackupManager.isReady(this)
+        renderSize(keep)
 
         binding.switchReminders.isChecked = prefs.isExpiryRemindersEnabled
         if (prefs.isExpiryRemindersEnabled && !ReminderNotifier.canNotify(this)) {
             binding.tvRemindersInfo.text = "Notifications are blocked for Papercase. Allow them in system settings to get reminders."
         }
         updatingUi = false
+    }
+
+    private fun keepChips() = mapOf(2 to binding.chipKeep2, 5 to binding.chipKeep5, 10 to binding.chipKeep10)
+
+    private fun renderSize(keep: Int) {
+        val size = AutoBackupManager.backupSize(this)
+        binding.tvBackupSize.visibility = if (size > 0) View.VISIBLE else View.GONE
+        if (size == 0L) return
+        val each = Formatter.formatShortFileSize(this, size)
+        val total = Formatter.formatShortFileSize(this, size * keep)
+        binding.tvBackupSize.text = if (size >= AutoBackupManager.LARGE_BACKUP_BYTES) {
+            "Each backup is $each, so $keep backups use about $total. Keeping fewer backups saves space."
+        } else {
+            "Each backup is about $each."
+        }
     }
 
     private fun backupStatus(enabled: Boolean, frequency: Frequency): String {

@@ -1,15 +1,18 @@
 package com.mattintech.papercase.transfer
 
+import com.mattintech.papercase.locker.backup.BackupExtras
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ReminderEntry
 import com.mattintech.papercase.locker.transfer.KdbxBackupFormat
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.json.JSONObject
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -125,6 +128,37 @@ class KdbxBackupFormatTest {
             KdbxBackupFormat.write(out, token, listOf(passport.copy(reminderDays = 180)), emptyMap()) { _, att -> bytes.getValue(att.id) }
         }
         assertEquals(180, KdbxBackupFormat.read(ByteArrayInputStream(out.toByteArray()), token).documents.single().reminderDays)
+    }
+
+    @Test
+    fun keepsSettingsPassphraseAndReminderStatus() {
+        val reminder = ReminderEntry(
+            docId = passport.id, title = passport.title, expiresOn = "2031-01-01", remindOn = "2030-07-05",
+            notifiedEarly = true, lastExpiredNotice = null, stopped = true
+        )
+        val extras = BackupExtras(
+            settings = JSONObject().put("locker_timeout_minutes", 2),
+            passphrase = "correct horse battery staple",
+            reminders = listOf(reminder)
+        )
+        val out = ByteArrayOutputStream()
+        runBlocking {
+            KdbxBackupFormat.write(out, token, listOf(passport), emptyMap(), extras) { _, att -> bytes.getValue(att.id) }
+        }
+        val contents = KdbxBackupFormat.read(ByteArrayInputStream(out.toByteArray()), token)
+
+        assertEquals("the passphrase entry isn't a document", 1, contents.documents.size)
+        assertEquals("correct horse battery staple", contents.extras.passphrase)
+        assertEquals(2, contents.extras.settings!!.getInt("locker_timeout_minutes"))
+        assertEquals(listOf(reminder), contents.extras.reminders)
+    }
+
+    @Test
+    fun backupWithoutExtrasHasNone() {
+        val contents = KdbxBackupFormat.read(ByteArrayInputStream(backup()), token)
+        assertEquals(null, contents.extras.passphrase)
+        assertEquals(null, contents.extras.settings)
+        assertTrue(contents.extras.reminders.isEmpty())
     }
 
     @Test

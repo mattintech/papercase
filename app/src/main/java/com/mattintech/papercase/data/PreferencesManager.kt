@@ -3,6 +3,8 @@ package com.mattintech.papercase.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.mattintech.papercase.crypto.KeystoreHelper
+import org.json.JSONArray
+import org.json.JSONObject
 
 class PreferencesManager(context: Context) {
 
@@ -23,6 +25,53 @@ class PreferencesManager(context: Context) {
         private const val KEY_CUSTOM_AUTHORITIES = "custom_issuing_authorities"
         private const val KEY_EXPIRY_REMINDERS = "expiry_reminders_enabled"
         private const val KEY_EXPIRY_REMINDERS_ASKED = "expiry_reminders_asked"
+
+        const val NAME = PREF_NAME
+
+        /** Settings that go into backups (and so mark the backup out of date when they change). */
+        private val BACKED_UP_KEYS = setOf(
+            KEY_AUTO_COPY, KEY_AUTO_MINIMIZE, KEY_AUTO_CLEAR, KEY_CLEAR_TIMEOUT_SECONDS,
+            KEY_LOCKER_TIMEOUT_MINUTES, KEY_CUSTOM_AUTHORITIES, KEY_EXPIRY_REMINDERS
+        )
+
+        fun isBackedUp(key: String?) = key in BACKED_UP_KEYS
+    }
+
+    /** Settings for a backup file. The stored passphrase is handled separately. */
+    fun exportSettings(): JSONObject = JSONObject().apply {
+        put(KEY_AUTO_COPY, isAutoCopyEnabled)
+        put(KEY_AUTO_MINIMIZE, isAutoMinimizeEnabled)
+        put(KEY_AUTO_CLEAR, isAutoClearEnabled)
+        put(KEY_CLEAR_TIMEOUT_SECONDS, clearTimeoutSeconds)
+        put(KEY_LOCKER_TIMEOUT_MINUTES, lockerTimeoutMinutes)
+        put(KEY_EXPIRY_REMINDERS, isExpiryRemindersEnabled)
+        put(KEY_CUSTOM_AUTHORITIES, JSONArray(getCustomAuthorities().sorted()))
+    }
+
+    /**
+     * Restores settings from a backup. Issuing authorities are always merged in; the other settings
+     * are only taken when [replaceSettings] is set (restoring onto a new phone or replacing the locker),
+     * so merging a backup doesn't undo choices made on this phone.
+     */
+    fun importSettings(json: JSONObject, replaceSettings: Boolean) {
+        val authorities = json.optJSONArray(KEY_CUSTOM_AUTHORITIES)
+        val merged = getCustomAuthorities().toMutableSet()
+        for (i in 0 until (authorities?.length() ?: 0)) {
+            authorities!!.optString(i).trim().takeIf { it.isNotEmpty() }?.let(merged::add)
+        }
+        val edit = prefs.edit().putStringSet(KEY_CUSTOM_AUTHORITIES, merged)
+        if (replaceSettings) {
+            if (json.has(KEY_AUTO_COPY)) edit.putBoolean(KEY_AUTO_COPY, json.optBoolean(KEY_AUTO_COPY))
+            if (json.has(KEY_AUTO_MINIMIZE)) edit.putBoolean(KEY_AUTO_MINIMIZE, json.optBoolean(KEY_AUTO_MINIMIZE))
+            if (json.has(KEY_AUTO_CLEAR)) edit.putBoolean(KEY_AUTO_CLEAR, json.optBoolean(KEY_AUTO_CLEAR))
+            if (json.has(KEY_CLEAR_TIMEOUT_SECONDS)) edit.putInt(KEY_CLEAR_TIMEOUT_SECONDS, json.optInt(KEY_CLEAR_TIMEOUT_SECONDS))
+            if (json.has(KEY_LOCKER_TIMEOUT_MINUTES)) edit.putInt(KEY_LOCKER_TIMEOUT_MINUTES, json.optInt(KEY_LOCKER_TIMEOUT_MINUTES))
+            if (json.has(KEY_EXPIRY_REMINDERS)) {
+                edit.putBoolean(KEY_EXPIRY_REMINDERS, json.optBoolean(KEY_EXPIRY_REMINDERS))
+                edit.putBoolean(KEY_EXPIRY_REMINDERS_ASKED, true)
+            }
+        }
+        edit.apply()
     }
 
     /** Whether expiry reminder notifications are on (each document sets how early). */
