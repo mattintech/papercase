@@ -1,15 +1,11 @@
 package com.mattintech.papercase.locker.ui
 
-import java.time.format.FormatStyle
-import java.time.format.DateTimeFormatter
-import com.mattintech.papercase.locker.reminders.ReminderOptions
-import com.mattintech.papercase.locker.reminders.ExpiryDates
-import com.mattintech.papercase.data.PreferencesManager
 import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -30,6 +26,7 @@ import com.google.android.material.datepicker.MaterialDatePicker
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
+import com.mattintech.papercase.data.PreferencesManager
 import com.mattintech.papercase.databinding.ActivityAddDocumentBinding
 import com.mattintech.papercase.databinding.ItemAttachmentChipBinding
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
@@ -38,20 +35,27 @@ import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ExpiryDates
+import com.mattintech.papercase.locker.reminders.ReminderOptions
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.mattintech.papercase.locker.ui.crop.CropActivity
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import javax.crypto.SecretKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AddDocumentActivity : AppCompatActivity() {
 
     companion object {
+        /** Longest edge for photos shown in the crop screen (keeps memory use reasonable). */
+        private const val MAX_PHOTO_EDGE = 3000
         const val EXTRA_DOCUMENT_ID = "extra_document_id"
 
         fun start(context: Context, documentId: String? = null) {
@@ -114,12 +118,26 @@ class AddDocumentActivity : AppCompatActivity() {
     private var tempPhotoUri: Uri? = null
     private var tempPhotoFile: File? = null
 
-    // Gallery picker
+    // Gallery picker: photos go through the crop screen
     private val pickImageLauncher =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             SessionManager.isExternalOperationActive = false
             SessionManager.keepAlive()
-            if (uri != null) handleSelectedUri(uri)
+            if (uri != null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val bytes = runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                    withContext(Dispatchers.Main) {
+                        if (bytes != null) openCrop(bytes) else handleSelectedUri(uri)
+                    }
+                }
+            }
+        }
+
+    // Crop screen: trims a photo to just the document
+    private val cropLauncher =
+        registerForActivityResult(CropActivity.Contract()) { bitmap ->
+            SessionManager.keepAlive()
+            if (bitmap != null) addPhotoBitmap(bitmap)
         }
 
     // PDF / generic file picker
@@ -159,30 +177,57 @@ class AddDocumentActivity : AppCompatActivity() {
                 photoFile.delete()
                 return@registerForActivityResult
             }
-            val slot = activeCaptureSlot
-            val title = activeVisaTitle
             lifecycleScope.launch(Dispatchers.IO) {
-                // Strip GPS & other EXIF metadata; decoding a full-size photo is too slow for the main thread
-                val clean = try {
-                    ImageMetadataStripper.strip(
-                        photoFile.readBytes(), "image/jpeg", "Photo_${System.currentTimeMillis()}.jpg"
-                    )
+                val bytes = try {
+                    photoFile.readBytes()
                 } finally {
                     photoFile.delete()
                 }
-                withContext(Dispatchers.Main) {
-                    addAttachmentItem(
-                        AttachmentItem.Pending(
-                            slot = slot,
-                            customTitle = title,
-                            fileName = clean.fileName,
-                            mimeType = clean.mimeType,
-                            bytes = clean.bytes
-                        )
-                    )
+                withContext(Dispatchers.Main) { openCrop(bytes) }
+            }
+        }
+
+    /** Decodes a photo (upright, at a manageable size) and opens the crop screen. */
+    private fun openCrop(bytes: ByteArray) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val bitmap = OrientedBitmap.decode(bytes)?.let(::limitSize)
+            withContext(Dispatchers.Main) {
+                if (bitmap != null) {
+                    cropLauncher.launch(bitmap)
+                } else {
+                    Toast.makeText(this@AddDocumentActivity, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
                 }
             }
         }
+    }
+
+    private fun limitSize(b: Bitmap): Bitmap {
+        val longest = maxOf(b.width, b.height)
+        if (longest <= MAX_PHOTO_EDGE) return b
+        val f = MAX_PHOTO_EDGE.toFloat() / longest
+        return Bitmap.createScaledBitmap(b, (b.width * f).toInt(), (b.height * f).toInt(), true).also { if (it !== b) b.recycle() }
+    }
+
+    /** Adds a cropped photo. Re-encoding from pixels means no metadata (GPS, camera details) survives. */
+    private fun addPhotoBitmap(bitmap: Bitmap) {
+        val slot = activeCaptureSlot
+        val title = activeVisaTitle
+        lifecycleScope.launch(Dispatchers.IO) {
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            withContext(Dispatchers.Main) {
+                addAttachmentItem(
+                    AttachmentItem.Pending(
+                        slot = slot,
+                        customTitle = title,
+                        fileName = "Photo_${System.currentTimeMillis()}.jpg",
+                        mimeType = "image/jpeg",
+                        bytes = out.toByteArray()
+                    )
+                )
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -519,6 +564,7 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun captureFromCamera(slot: AttachmentSlot, visaTitle: String = "") {
         activeCaptureSlot = slot
         activeVisaTitle = visaTitle
+        // The photo then opens in the crop screen
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             launchCameraCapture()
         } else {

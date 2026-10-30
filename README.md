@@ -32,6 +32,7 @@ No accounts. No servers. No tracking. Your documents never leave your devices un
 - Store IDs, passports, licences, insurance cards and PDFs, with front/back photos, visas and extra pages.
 - Everything is encrypted with a key held in your phone's secure hardware. The locker opens only after you unlock with your fingerprint or device PIN, and locks itself again when you leave.
 - Give any document its own password for an extra layer.
+- Crop photos to just the document: drag the corners and the page is straightened, even if it was photographed at an angle.
 - Photos are cleaned of location, timestamps and camera details when you add them.
 - Copy a document number with one tap; with auto-clear on, the clipboard is wiped after a few seconds.
 - Get reminded before a document expires: choose how early on each one (a week to a year), and keep getting reminded every two weeks after it expires until you update it.
@@ -62,7 +63,7 @@ No accounts. No servers. No tracking. Your documents never leave your devices un
 | **Per-document passwords** | Attachments are encrypted with a key derived from that password. They stay encrypted in transfers and backups, and only open with the password. |
 | **Phone-to-phone transfer** | Encrypted with a random 256-bit key that exists only in the QR code and is never sent over the network. The sender must approve the receiving device. |
 | **Backups** | KeePass KDBX 4: AES-256 with Argon2id (64 MiB, 3 passes). The token is randomly generated. |
-| **Network** | The app talks only to your other device on the local network, during a transfer you started. There are no analytics or crash reporting. |
+| **Network** | The app talks only to your other device on the local network, during a transfer you started. There are no analytics or crash reporting. (The Google Play version also asks the Play Store app whether an update is available.) |
 
 Known limitations:
 - For password-protected documents, only the attachments are encrypted with the document password; the title, number and notes are protected by the locker key only (and are readable in a backup by anyone with its token).
@@ -81,11 +82,20 @@ To build it yourself:
 ```bash
 git clone https://github.com/mattintech/papercase.git
 cd papercase
-./gradlew assembleDebug
-adb install app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleFdroidDebug
+adb install app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk
 ```
 
 Requires Android 12 (API 31) or newer, and JDK 17+ to build.
+
+### Builds
+
+There are two flavors with the same app ID:
+
+- **`fdroid`** contains no Google libraries and works on any Android 12+ device. This is the build on F-Droid and on the GitHub releases page.
+- **`play`** is the Google Play build. It adds one thing: a prompt suggesting an update when Google Play has a newer version (never forced).
+
+Debug builds install as a separate app, "Papercase Debug" (`com.mattintech.papercase.debug`), so they can sit next to the store version.
 
 ## Moving from SecurePass
 

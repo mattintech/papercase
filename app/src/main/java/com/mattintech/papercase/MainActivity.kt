@@ -1,7 +1,5 @@
 package com.mattintech.papercase
 
-import com.mattintech.papercase.locker.ui.LockerSettingsActivity
-import com.mattintech.papercase.locker.backup.AutoBackupManager
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -10,7 +8,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import kotlin.coroutines.resume
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.provider.Settings
@@ -45,12 +42,13 @@ import com.mattintech.papercase.databinding.DialogSetPassphraseBinding
 import com.mattintech.papercase.databinding.DialogSyncConflictsBinding
 import com.mattintech.papercase.databinding.DialogVaultTransferBottomSheetBinding
 import com.mattintech.papercase.databinding.DialogViewPassphraseBinding
+import com.mattintech.papercase.locker.backup.AutoBackupManager
+import com.mattintech.papercase.locker.crypto.LockerKeyInvalidatedException
+import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
 import com.mattintech.papercase.locker.transfer.ConflictResolutionStrategy
-import com.mattintech.papercase.locker.crypto.LockerKeyInvalidatedException
-import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.transfer.P2pNetworkHelper
 import com.mattintech.papercase.locker.transfer.P2pSessionKeys
 import com.mattintech.papercase.locker.transfer.P2pTransferClient
@@ -60,13 +58,16 @@ import com.mattintech.papercase.locker.transfer.VaultConflictReport
 import com.mattintech.papercase.locker.transfer.VaultExportImportManager
 import com.mattintech.papercase.locker.ui.AddDocumentActivity
 import com.mattintech.papercase.locker.ui.DocumentViewerActivity
+import com.mattintech.papercase.locker.ui.LockerSettingsActivity
 import com.mattintech.papercase.locker.ui.SecureDocumentsAdapter
+import com.mattintech.papercase.store.AppUpdatePrompt
+import java.io.File
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -87,6 +88,9 @@ class MainActivity : AppCompatActivity() {
             SessionManager.isLockerUnlocked = value
         }
     private var hasHandledAutoLaunch = false
+
+    /** Google Play build: suggests updating when a new version is out. F-Droid build: does nothing. */
+    private lateinit var updatePrompt: AppUpdatePrompt
     private var activeTokenInput: android.widget.EditText? = null
     private var activeP2pServer: P2pTransferServer? = null
 
@@ -166,6 +170,7 @@ class MainActivity : AppCompatActivity() {
 
         prefs = PreferencesManager(this)
         lockerRepository = SecureLockerRepository(this)
+        updatePrompt = AppUpdatePrompt(this, binding.root, binding.bottomNavigation)
 
         setupWindowInsets()
         setupUI()
@@ -208,6 +213,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        updatePrompt.check()
         ClipboardSecurityManager.checkAndClearIfExpired(this)
         updateVaultStatusUI()
 

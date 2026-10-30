@@ -129,12 +129,13 @@ jobs:
         run: echo "${{ secrets.PAPERCASE_KEYSTORE_BASE64 }}" | base64 --decode > "$PAPERCASE_KEYSTORE_FILE"
 
       - name: Test and build signed release
-        run: ./gradlew testDebugUnitTest assembleRelease bundleRelease -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
+        run: ./gradlew testPlayDebugUnitTest testFdroidDebugUnitTest bundlePlayRelease assembleFdroidRelease -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
 
       - name: Prepare release files
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/papercase-$GITHUB_REF_NAME.apk"
+          # The GitHub download is the F-Droid build: no Google libraries, works without Play services
+          cp app/build/outputs/apk/fdroid/release/app-fdroid-release.apk "dist/papercase-$GITHUB_REF_NAME.apk"
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v3
@@ -148,8 +149,8 @@ jobs:
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.mattintech.papercase
-          releaseFiles: app/build/outputs/bundle/release/app-release.aab
-          mappingFile: app/build/outputs/mapping/release/mapping.txt
+          releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
+          mappingFile: app/build/outputs/mapping/playRelease/mapping.txt
           track: ${{ vars.PLAY_TRACK || 'internal' }}
           # Apps that haven't been published yet only accept draft releases
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}

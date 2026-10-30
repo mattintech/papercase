@@ -63,6 +63,11 @@
             android:name=".locker.ui.LockerSettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".locker.ui.crop.CropActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Papercase" />
+
         <receiver
             android:name=".locker.reminders.StopReminderReceiver"
             android:exported="false" />

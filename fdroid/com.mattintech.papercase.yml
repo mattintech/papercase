@@ -19,7 +19,9 @@ Builds:
     commit: v1.0.0
     subdir: app
     gradle:
-      - yes
+      - fdroid
+    # The play flavor's Google libraries aren't built, but F-Droid's scanner checks build files too
+    prebuild: sed -i -e '/playImplementation/d' build.gradle.kts
 
 # F-Droid reads versionName and versionCode from app/build.gradle.kts at each tag.
 # Only plain vMAJOR.MINOR.PATCH tags are picked up; pre-release tags are skipped.

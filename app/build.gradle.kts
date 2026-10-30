@@ -22,6 +22,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Two store builds with the same app id. "play" adds Google Play's in-app update prompt;
+    // "fdroid" has no Google libraries (F-Droid only accepts free software).
+    flavorDimensions += "store"
+    productFlavors {
+        create("play") { dimension = "store" }
+        create("fdroid") { dimension = "store" }
+    }
+
     // Release signing is only configured when a keystore is supplied (the Google Play
     // release workflow). F-Droid and local builds produce unsigned release APKs.
     val releaseKeystore = System.getenv("PAPERCASE_KEYSTORE_FILE")
@@ -86,6 +94,9 @@ dependencies {
     implementation("com.squareup.okio:okio:3.15.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.documentfile:documentfile:1.1.0")
+
+    // Google Play build only (proprietary Google libraries, never in the F-Droid build)
+    "playImplementation"("com.google.android.play:app-update-ktx:2.1.0")
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
