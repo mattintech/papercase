@@ -154,6 +154,7 @@ class DocumentViewerActivity : AppCompatActivity() {
                 return@launch
             }
             if (doc == null) {
+                Toast.makeText(this@DocumentViewerActivity, "This document is no longer in your locker.", Toast.LENGTH_SHORT).show()
                 finish()
                 return@launch
             }

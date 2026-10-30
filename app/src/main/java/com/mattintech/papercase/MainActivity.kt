@@ -73,6 +73,9 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val ACTION_TRIGGER_COPY = "com.mattintech.papercase.ACTION_TRIGGER_COPY"
+
+        /** Document to open once the locker is unlocked (e.g. from an expiry reminder). */
+        const val EXTRA_OPEN_DOCUMENT_ID = "com.mattintech.papercase.extra.OPEN_DOCUMENT_ID"
         private const val STATE_SELECTED_TAB = "selected_tab"
     }
 
@@ -88,6 +91,7 @@ class MainActivity : AppCompatActivity() {
             SessionManager.isLockerUnlocked = value
         }
     private var hasHandledAutoLaunch = false
+    private var pendingOpenDocumentId: String? = null
 
     /** Google Play build: suggests updating when a new version is out. F-Droid build: does nothing. */
     private lateinit var updatePrompt: AppUpdatePrompt
@@ -196,8 +200,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun selectInitialTab(savedInstanceState: Bundle?) {
         val tab = savedInstanceState?.getInt(STATE_SELECTED_TAB)?.takeIf { it != 0 } ?: run {
-            val wantsPassphrase = intent?.action == ACTION_TRIGGER_COPY ||
-                (prefs.hasStoredPassphrase && prefs.isAutoCopyEnabled)
+            val opensDocument = intent?.hasExtra(EXTRA_OPEN_DOCUMENT_ID) == true
+            val wantsPassphrase = !opensDocument && (intent?.action == ACTION_TRIGGER_COPY ||
+                (prefs.hasStoredPassphrase && prefs.isAutoCopyEnabled))
             if (wantsPassphrase) R.id.nav_passphrase else R.id.nav_locker
         }
         // Check the item directly so the selection listener (which prompts) doesn't fire
@@ -237,11 +242,25 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIncomingIntent()
+        handleIncomingIntent(appAlreadyOpen = true)
     }
 
-    private fun handleIncomingIntent() {
+    private fun handleIncomingIntent(appAlreadyOpen: Boolean = false) {
         val currentIntent = intent ?: return
+
+        // 0. Open a specific document (expiry reminder). Shown after unlocking, like any document.
+        currentIntent.getStringExtra(EXTRA_OPEN_DOCUMENT_ID)?.let { id ->
+            currentIntent.removeExtra(EXTRA_OPEN_DOCUMENT_ID)
+            pendingOpenDocumentId = id
+            if (isLockerUnlocked && binding.layoutLockerContent.visibility == View.VISIBLE) {
+                openPendingDocument()
+            } else if (appAlreadyOpen) {
+                binding.bottomNavigation.menu.findItem(R.id.nav_locker)?.isChecked = true
+                showLockerTab(promptIfLocked = true)
+            }
+            // On a fresh start the locker tab is already showing and asking to unlock
+            return
+        }
 
         // 1. Check Deep Link (e.g. from Samsung Camera, Google Lens, or browser)
         val uri = currentIntent.data
@@ -658,6 +677,13 @@ class MainActivity : AppCompatActivity() {
         migrateLockerKeyIfNeeded()
         // The locker key is usable right now: bring the automatic backup snapshot up to date
         lifecycleScope.launch { AutoBackupManager.refreshIfNeeded(this@MainActivity) }
+        openPendingDocument()
+    }
+
+    private fun openPendingDocument() {
+        val id = pendingOpenDocumentId ?: return
+        pendingOpenDocumentId = null
+        DocumentViewerActivity.start(this, id)
     }
 
     /** Moves the locker onto the auth-bound key the first time it's opened on a device with a screen lock. */

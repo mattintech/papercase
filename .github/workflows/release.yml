@@ -4,12 +4,18 @@ name: Release
 # GitHub Release, and upload the app bundle to Google Play.
 #   versionName = the tag without the leading "v"
 #   versionCode = highest versionCode on any Google Play track + 1
-# Run it manually (Actions > Release > Run workflow) to only print the next
-# versionCode from Google Play. Manual runs never build or upload anything.
+# Run it manually (Actions > Release > Run workflow) to print the next versionCode
+# from Google Play, or tick "internal test" to build the chosen branch and upload
+# it to Google Play's internal testing track (no tag, no GitHub release).
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      internal_test:
+        description: Build this branch and upload it to Google Play's internal testing track
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -47,6 +53,10 @@ jobs:
         run: |
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             echo "name=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.internal_test }}" = true ]; then
+            # e.g. 1.0.0-internal.12+ab12cd3: the build file's version, run number and commit
+            BASE=$(sed -nE 's/^ *versionName = "(.+)"$/\1/p' app/build.gradle.kts)
+            echo "name=$BASE-internal.$GITHUB_RUN_NUMBER+$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           else
             echo "name=(set from the tag when releasing)" >> "$GITHUB_OUTPUT"
           fi
@@ -155,6 +165,58 @@ jobs:
           # Apps that haven't been published yet only accept draft releases
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
           whatsNewDirectory: whatsnew
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$PAPERCASE_KEYSTORE_FILE"
+
+  internal-test:
+    needs: version
+    if: github.event_name == 'workflow_dispatch' && inputs.internal_test
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      VERSION_CODE: ${{ needs.version.outputs.code }}
+      PAPERCASE_KEYSTORE_FILE: ${{ github.workspace }}/upload-keystore.jks
+      PAPERCASE_KEYSTORE_PASSWORD: ${{ secrets.PAPERCASE_KEYSTORE_PASSWORD }}
+      PAPERCASE_KEY_ALIAS: ${{ secrets.PAPERCASE_KEY_ALIAS }}
+      PAPERCASE_KEY_PASSWORD: ${{ secrets.PAPERCASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore upload keystore
+        run: echo "${{ secrets.PAPERCASE_KEYSTORE_BASE64 }}" | base64 --decode > "$PAPERCASE_KEYSTORE_FILE"
+
+      - name: Test and build signed bundle
+        run: ./gradlew testPlayDebugUnitTest bundlePlayRelease -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
+
+      - name: Release notes
+        run: |
+          mkdir -p whatsnew
+          echo "Internal test build from $GITHUB_REF_NAME ($(git rev-parse --short HEAD))." > whatsnew/whatsnew-en-US
+
+      - name: Upload to Google Play (internal testing)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.mattintech.papercase
+          releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
+          mappingFile: app/build/outputs/mapping/playRelease/mapping.txt
+          track: internal
+          # Apps that haven't been published yet only accept draft releases
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          whatsNewDirectory: whatsnew
+
+      - name: Summary
+        run: |
+          printf 'Uploaded %s (%s) to the internal testing track.\n' "$VERSION_NAME" "$VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove keystore
         if: always()
