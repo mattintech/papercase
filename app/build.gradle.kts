@@ -84,6 +84,8 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("app.keemobile:kotpass:0.13.0")
     implementation("com.squareup.okio:okio:3.15.0")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)

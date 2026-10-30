@@ -81,14 +81,16 @@ internal object KdbxBackupFormat {
     /** Tokens are shown as "PCASE-XXXX-…"; tolerate lower case and stray spaces when typed. */
     fun normalizeToken(token: String): String = token.trim().uppercase().replace(" ", "")
 
-    private fun credentials(token: String) =
-        Credentials.from(EncryptedValue.fromString(normalizeToken(token)))
+    /** Tokens are normalized; user-chosen backup passwords are used exactly as typed. */
+    private fun credentials(secret: String, exact: Boolean) =
+        Credentials.from(EncryptedValue.fromString(if (exact) secret else normalizeToken(secret)))
 
     suspend fun write(
         out: OutputStream,
         token: String,
         documents: List<SecureDocument>,
         deletions: Map<String, Long>,
+        exactPassword: Boolean = false,
         attachments: AttachmentSource
     ) {
         val random = SecureRandom()
@@ -116,7 +118,7 @@ internal object KdbxBackupFormat {
         val database = KeePassDatabase.Ver4x.create(
             rootName = "Papercase",
             meta = Meta(generator = "Papercase", name = "Papercase Backup", recycleBinEnabled = false),
-            credentials = credentials(token),
+            credentials = credentials(token, exactPassword),
             random = random
         ).let { db ->
             db.copy(
@@ -146,12 +148,23 @@ internal object KdbxBackupFormat {
 
     /** @throws IllegalArgumentException with a user-facing message if the token is wrong or the file is damaged. */
     fun read(input: InputStream, token: String): Contents {
-        val database = try {
-            KeePassDatabase.decode(input, credentials(token))
-        } catch (e: CryptoError.InvalidKey) {
-            throw IllegalArgumentException("Decryption failed. The Secure Token entered is incorrect.")
-        } catch (e: Exception) {
-            throw IllegalArgumentException("Could not read the backup. The token is incorrect or the file is damaged.")
+        val bytes = input.readBytes()
+        // Automatic backups use the user's password as typed; exported backups use a token
+        val candidates = listOf(credentials(token, exact = true), credentials(token, exact = false))
+            .let { if (normalizeToken(token) == token) it.take(1) else it }
+        var database: KeePassDatabase? = null
+        for (credentials in candidates) {
+            try {
+                database = KeePassDatabase.decode(bytes.inputStream(), credentials)
+                break
+            } catch (e: CryptoError.InvalidKey) {
+                // try the next form
+            } catch (e: Exception) {
+                throw IllegalArgumentException("Could not read the backup. The password is incorrect or the file is damaged.")
+            }
+        }
+        if (database == null) {
+            throw IllegalArgumentException("Decryption failed. The token or backup password is incorrect.")
         }
 
         val meta = database.content.meta
@@ -254,6 +267,7 @@ internal object KdbxBackupFormat {
             passwordSaltBase64 = stored?.passwordSaltBase64.orEmpty(),
             encryptedDekBase64 = stored?.encryptedDekBase64.orEmpty(),
             dekIvBase64 = stored?.dekIvBase64.orEmpty(),
+            reminderDays = stored?.reminderDays ?: 0,
             createdAt = createdAt,
             updatedAt = updatedAt
         )

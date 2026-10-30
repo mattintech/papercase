@@ -9,6 +9,7 @@ No accounts, no servers, no tracking. Your documents never leave your devices un
 <li>Give any document its own password for an extra layer.</li>
 <li>Location, timestamps and camera details are removed from photos when you add them.</li>
 <li>Copy a document number with one tap, and have the clipboard wiped automatically.</li>
+<li>Get reminded before documents expire. You choose how early for each one, and Papercase keeps reminding you after expiry until you update it.</li>
 </ul>
 
 <b>Move documents between your devices</b>
@@ -22,6 +23,7 @@ No accounts, no servers, no tracking. Your documents never leave your devices un
 <ul>
 <li>Export your locker as a standard KeePass (.kdbx) file protected with a one-time token.</li>
 <li>Backups also open in KeePassXC or KeePassDX, so your data is never locked into this app.</li>
+<li>Turn on automatic daily or weekly backups to a folder you choose, protected with your own backup password.</li>
 </ul>
 
 <b>Passphrase</b>

@@ -1,5 +1,7 @@
 package com.mattintech.papercase
 
+import com.mattintech.papercase.locker.ui.LockerSettingsActivity
+import com.mattintech.papercase.locker.backup.AutoBackupManager
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -593,9 +595,11 @@ class MainActivity : AppCompatActivity() {
         popup.menuInflater.inflate(R.menu.menu_toolbar_settings, popup.menu)
         popup.menu.findItem(R.id.action_transfer).isVisible = isLockerOpenOnScreen
         popup.menu.findItem(R.id.action_lock).isVisible = isLockerOpenOnScreen
+        popup.menu.findItem(R.id.action_settings).isVisible = isLockerOpenOnScreen
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_transfer -> showVaultTransferOptions()
+                R.id.action_settings -> LockerSettingsActivity.start(this)
                 R.id.action_lock -> {
                     SessionManager.lock()
                     lockLockerInPlace()
@@ -646,6 +650,8 @@ class MainActivity : AppCompatActivity() {
         binding.fabAddDocument.show()
         binding.tvToolbarTitle.text = "Locker"
         migrateLockerKeyIfNeeded()
+        // The locker key is usable right now: bring the automatic backup snapshot up to date
+        lifecycleScope.launch { AutoBackupManager.refreshIfNeeded(this@MainActivity) }
     }
 
     /** Moves the locker onto the auth-bound key the first time it's opened on a device with a screen lock. */
@@ -1588,9 +1594,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tokenInput = android.widget.EditText(this).apply {
-            hint = "PCASE-XXXX-XXXX-XXXX-XXXX-XXXX"
+            hint = "Token or backup password"
             typeface = android.graphics.Typeface.MONOSPACE
-            inputType = android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
         }
         activeTokenInput = tokenInput
         layout.addView(tokenInput)
@@ -1612,8 +1618,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btnScanQr)
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("Enter Secure Token")
-            .setMessage("Enter the Secure Token or scan the QR code from the exporting device to decrypt the vault:")
+            .setTitle("Unlock backup")
+            .setMessage("Enter the token shown when the backup was exported (or scan its QR code). For automatic backups, enter your backup password.")
             .setView(layout)
             .setPositiveButton("Decrypt & Import") { _, _ ->
                 val token = tokenInput.text.toString().trim()

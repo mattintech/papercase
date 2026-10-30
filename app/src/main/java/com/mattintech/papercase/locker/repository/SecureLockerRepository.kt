@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
 import com.mattintech.papercase.locker.crypto.LockerKeyInvalidatedException
 import com.mattintech.papercase.locker.crypto.LockerKeystoreHelper
@@ -11,6 +12,7 @@ import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ReminderStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -60,6 +62,9 @@ class SecureLockerRepository(private val context: Context) {
         catalogKeyVersion()?.let { return it }
         return if (isDeviceSecure()) LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND else LockerKeystoreHelper.KEY_VERSION_LEGACY
     }
+
+    /** Key version currently used for the locker (for other secrets that must share its protection). */
+    fun currentKeyVersion(): Int = activeKeyVersion().also { ensureKey(it) }
 
     private fun ensureKey(version: Int) {
         if (!LockerKeystoreHelper.hasKey(version) && catalogKeyVersion() == null) {
@@ -132,6 +137,17 @@ class SecureLockerRepository(private val context: Context) {
             tempFile.delete()
             throw IllegalStateException("Could not write locker catalog")
         }
+        onCatalogChanged(catalog.documents)
+    }
+
+    /** Keeps the background reminder list and the automatic backup snapshot in step with the locker. */
+    private fun onCatalogChanged(documents: List<SecureDocument>) {
+        try {
+            ReminderStore.sync(context, documents)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        AutoBackupManager.onLockerChanged(context)
     }
 
     /**
@@ -187,6 +203,7 @@ class SecureLockerRepository(private val context: Context) {
             val catalog = loadCatalogStrict()
             catalog.documents.forEach { doc -> doc.attachments.forEach { deleteAttachmentFile(it) } }
             if (catalogFile.exists()) catalogFile.delete()
+            onCatalogChanged(emptyList())
             true
         } catch (e: LockerLockedException) {
             throw e
@@ -203,6 +220,8 @@ class SecureLockerRepository(private val context: Context) {
     suspend fun resetAfterKeyLoss() = withContext(Dispatchers.IO) {
         filesDir.listFiles()?.forEach { it.delete() }
         catalogFile.delete()
+        ReminderStore.clear(context)
+        AutoBackupManager.onLockerKeyLost(context)
         LockerKeystoreHelper.deleteKey(LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND)
         LockerKeystoreHelper.deleteKey(LockerKeystoreHelper.KEY_VERSION_LEGACY)
     }
@@ -386,6 +405,8 @@ class SecureLockerRepository(private val context: Context) {
             newFiles.forEach { it.delete() }
             throw e
         }
+
+        AutoBackupManager.migratePassword(context, legacy, authBound)
 
         // New catalog is in place: remove the legacy copies and key
         documents.filter { !it.isPasswordProtected }

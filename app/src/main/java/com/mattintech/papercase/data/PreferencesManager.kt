@@ -21,7 +21,19 @@ class PreferencesManager(context: Context) {
         private const val KEY_LAST_COPIED_TIME = "last_copied_time"
         private const val KEY_LOCKER_TIMEOUT_MINUTES = "locker_timeout_minutes"
         private const val KEY_CUSTOM_AUTHORITIES = "custom_issuing_authorities"
+        private const val KEY_EXPIRY_REMINDERS = "expiry_reminders_enabled"
+        private const val KEY_EXPIRY_REMINDERS_ASKED = "expiry_reminders_asked"
     }
+
+    /** Whether expiry reminder notifications are on (each document sets how early). */
+    var isExpiryRemindersEnabled: Boolean
+        get() = prefs.getBoolean(KEY_EXPIRY_REMINDERS, false)
+        set(value) = prefs.edit().putBoolean(KEY_EXPIRY_REMINDERS, value).putBoolean(KEY_EXPIRY_REMINDERS_ASKED, true).apply()
+
+    /** Set once the user has been asked about expiry reminders, so we only ask once. */
+    var hasAskedAboutExpiryReminders: Boolean
+        get() = prefs.getBoolean(KEY_EXPIRY_REMINDERS_ASKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_EXPIRY_REMINDERS_ASKED, value).apply()
 
     fun getCustomAuthorities(): Set<String> {
         return prefs.getStringSet(KEY_CUSTOM_AUTHORITIES, emptySet()) ?: emptySet()

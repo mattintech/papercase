@@ -59,6 +59,14 @@
             android:name=".locker.ui.DocumentViewerActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".locker.ui.LockerSettingsActivity"
+            android:exported="false" />
+
+        <receiver
+            android:name=".locker.reminders.StopReminderReceiver"
+            android:exported="false" />
+
         <!-- Trampoline activity to clear clipboard with focused activity access -->
         <activity
             android:name=".clipboard.ClearClipboardActivity"

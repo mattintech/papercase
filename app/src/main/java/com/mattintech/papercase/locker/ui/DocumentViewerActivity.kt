@@ -1,5 +1,6 @@
 package com.mattintech.papercase.locker.ui
 
+import com.mattintech.papercase.locker.reminders.ReminderOptions
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -225,7 +226,11 @@ class DocumentViewerActivity : AppCompatActivity() {
 
         if (doc.expirationDate.isNotBlank()) {
             binding.layoutExpiry.visibility = View.VISIBLE
-            binding.tvExpiry.text = doc.expirationDate
+            binding.tvExpiry.text = if (doc.reminderDays > 0) {
+                "${doc.expirationDate}  ·  reminder ${ReminderOptions.label(doc.reminderDays)}"
+            } else {
+                doc.expirationDate
+            }
         } else {
             binding.layoutExpiry.visibility = View.GONE
         }

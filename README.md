@@ -34,6 +34,7 @@ No accounts. No servers. No tracking. Your documents never leave your devices un
 - Give any document its own password for an extra layer.
 - Photos are cleaned of location, timestamps and camera details when you add them.
 - Copy a document number with one tap; with auto-clear on, the clipboard is wiped after a few seconds.
+- Get reminded before a document expires: choose how early on each one (a week to a year), and keep getting reminded every two weeks after it expires until you update it.
 
 **Move documents between your devices**
 - Show a QR code on one phone, scan it on the other, and the locker is sent directly over your local Wi-Fi.
@@ -43,6 +44,7 @@ No accounts. No servers. No tracking. Your documents never leave your devices un
 **Back up to a file**
 - Export the locker as a standard **KeePass (.kdbx)** file, protected with a one-time token.
 - The backup also opens in [KeePassXC](https://keepassxc.org/) or [KeePassDX](https://www.keepassdx.com/), so your data is never locked into this app.
+- Or turn on automatic backups: daily or weekly, to a folder you choose (including a synced folder), protected with a backup password you set. The 5 most recent are kept.
 
 **Passphrase**
 - A secondary feature for people who use a long master passphrase (for example for a KeePass database): store it under your fingerprint and copy it with one tap, from the app or a Quick Settings tile. The clipboard is wiped after a timeout you choose.
