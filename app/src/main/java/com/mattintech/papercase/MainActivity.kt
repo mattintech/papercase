@@ -546,15 +546,13 @@ class MainActivity : AppCompatActivity() {
         binding.nestedScrollView.visibility = View.VISIBLE
         binding.layoutSecureLocker.visibility = View.GONE
         binding.fabAddDocument.hide()
-        binding.ivToolbarLogo.setImageResource(R.drawable.ic_shield_check)
-        binding.tvToolbarTitle.text = getString(R.string.app_name)
+        binding.tvToolbarTitle.text = "Passphrase"
     }
 
     /** Shows the locker tab: the documents if unlocked, otherwise the locked screen. */
     private fun showLockerTab(promptIfLocked: Boolean) {
         binding.nestedScrollView.visibility = View.GONE
         binding.layoutSecureLocker.visibility = View.VISIBLE
-        binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
         binding.tvToolbarTitle.text = "Locker"
 
         if (isLockerUnlocked || SessionManager.isSessionValid(getSessionTimeoutMs())) {
@@ -636,7 +634,6 @@ class MainActivity : AppCompatActivity() {
         binding.layoutLockerLocked.visibility = View.GONE
         binding.layoutLockerContent.visibility = View.VISIBLE
         binding.fabAddDocument.show()
-        binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
         binding.tvToolbarTitle.text = "Locker"
         migrateLockerKeyIfNeeded()
     }

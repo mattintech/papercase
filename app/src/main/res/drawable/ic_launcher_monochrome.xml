@@ -1,28 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
-    android:viewportHeight="108"
-    android:tint="@android:color/white">
-
-    <!-- Shield Outline -->
+    android:viewportHeight="108">
+    <!-- Themed icon: front sheet (text lines cut out) above the case (clasp cut out) -->
+    <group>
+        <clip-path android:pathData="M0,0 H108 V50.5 H0 Z" />
+        <group android:rotation="-5" android:pivotX="50" android:pivotY="45">
+            <path
+                android:fillColor="#FFFFFF"
+                android:fillType="evenOdd"
+                android:pathData="M37,29 H62 A3,3 0 0 1 65,32 V63 A3,3 0 0 1 62,66 H37 A3,3 0 0 1 34,63 V32 A3,3 0 0 1 37,29 Z M40.3,36 H54.7 A1.3,1.3 0 0 1 56,37.3 V37.300000000000004 A1.3,1.3 0 0 1 54.7,38.6 H40.3 A1.3,1.3 0 0 1 39,37.300000000000004 V37.3 A1.3,1.3 0 0 1 40.3,36 Z M40.3,41.5 H58.7 A1.3,1.3 0 0 1 60,42.8 V42.800000000000004 A1.3,1.3 0 0 1 58.7,44.1 H40.3 A1.3,1.3 0 0 1 39,42.800000000000004 V42.8 A1.3,1.3 0 0 1 40.3,41.5 Z M40.3,47 H51.7 A1.3,1.3 0 0 1 53,48.3 V48.300000000000004 A1.3,1.3 0 0 1 51.7,49.6 H40.3 A1.3,1.3 0 0 1 39,48.300000000000004 V48.3 A1.3,1.3 0 0 1 40.3,47 Z" />
+        </group>
+    </group>
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M54,25 L81,32 C81,57 69,75 54,82 C39,75 27,57 27,32 Z" />
-
-    <!-- Padlock Cutout / Inset -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeWidth="3.6"
-        android:strokeColor="@android:color/black"
-        android:strokeLineCap="round"
-        android:pathData="M46,49 V43 C46,38.6 49.6,35 54,35 C58.4,35 62,38.6 62,43 V49" />
-
-    <path
-        android:fillColor="@android:color/black"
-        android:pathData="M42,49 H66 C67.65,49 69,50.35 69,52 V68 C69,69.65 67.65,71 66,71 H42 C40.35,71 39,69.65 39,68 V52 C39,50.35 40.35,49 42,49 Z" />
-
-    <path
-        android:fillColor="@android:color/white"
-        android:pathData="M54,55 C52.6,55 51.5,56.1 51.5,57.5 C51.5,58.4 52.0,59.2 52.7,59.7 L52.2,65 H55.8 L55.3,59.7 C56.0,59.2 56.5,58.4 56.5,57.5 C56.5,56.1 55.4,55 54,55 Z" />
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M30,53 H78 V72 A7,7 0 0 1 71,79 H37 A7,7 0 0 1 30,72 Z M54,55.45 A1.8,1.8 0 1 0 54,59.05 A1.8,1.8 0 1 0 54,55.45 Z" />
 </vector>

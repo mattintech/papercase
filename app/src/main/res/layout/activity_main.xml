@@ -32,8 +32,8 @@
                     android:id="@+id/ivToolbarLogo"
                     android:layout_width="28dp"
                     android:layout_height="28dp"
-                    android:src="@drawable/ic_shield_check"
-                    app:tint="?attr/colorPrimary" />
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_papercase_logo" />
 
                 <TextView
                     android:id="@+id/tvToolbarTitle"
