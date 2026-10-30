@@ -17,3 +17,8 @@ local.properties
 # Machine-specific IDE state
 /.idea/deploymentTargetSelector.xml
 /.idea/deviceManager.xml
+
+# fastlane output (the Fastfile is only used for Play version lookups)
+/fastlane/report.xml
+/fastlane/README.md
+/vendor/bundle
