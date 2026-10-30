@@ -25,6 +25,7 @@ Documents, photos, notes and your optional master passphrase are stored **only o
 
 ## Transfers and backups
 
+- **Update check (Google Play version only):** when the app opens, it asks the Google Play Store app on your device whether a newer version is available, so it can suggest updating. The Play Store handles that check (it sends your device and app version details to Google, as it does for its own automatic updates) under Google's terms. The F-Droid and GitHub versions don't do this.
 - **Phone-to-phone transfer** sends your encrypted locker directly to another device on your local network. It happens only when you start it and approve the receiving device.
 - **Backup files** are created when you export one, or automatically if you turn on automatic backups, and saved only to the folder you choose. They are encrypted, and can only be opened with the export token or the backup password you set.
 - **Expiry reminders** keep a small encrypted list of document titles and expiry dates on your device, so reminders can be sent without unlocking the locker. It never leaves your device.

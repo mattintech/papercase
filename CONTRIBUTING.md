@@ -32,7 +32,7 @@ Wait for a reply before starting larger work. It may already be planned, or ther
 - Add or update unit tests where it makes sense (`app/src/test`).
 - Make sure it builds and the tests pass:
   ```bash
-  ./gradlew testDebugUnitTest assembleDebug
+  ./gradlew testFdroidDebugUnitTest assembleFdroidDebug assemblePlayDebug
   ```
 - If you change anything to do with encryption, keys, transfers or backups, explain the reasoning in the PR. Don't add network services, analytics, or new dependencies without discussing it in the issue first.
 
