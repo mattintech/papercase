@@ -25,13 +25,16 @@ class PreferencesManager(context: Context) {
         private const val KEY_CUSTOM_AUTHORITIES = "custom_issuing_authorities"
         private const val KEY_EXPIRY_REMINDERS = "expiry_reminders_enabled"
         private const val KEY_EXPIRY_REMINDERS_ASKED = "expiry_reminders_asked"
+        private const val KEY_LOCKER_LAYOUT = "locker_layout"
+        private const val KEY_LOCKER_SORT = "locker_sort"
 
         const val NAME = PREF_NAME
 
         /** Settings that go into backups (and so mark the backup out of date when they change). */
         private val BACKED_UP_KEYS = setOf(
             KEY_AUTO_COPY, KEY_AUTO_MINIMIZE, KEY_AUTO_CLEAR, KEY_CLEAR_TIMEOUT_SECONDS,
-            KEY_LOCKER_TIMEOUT_MINUTES, KEY_CUSTOM_AUTHORITIES, KEY_EXPIRY_REMINDERS
+            KEY_LOCKER_TIMEOUT_MINUTES, KEY_CUSTOM_AUTHORITIES, KEY_EXPIRY_REMINDERS,
+            KEY_LOCKER_LAYOUT, KEY_LOCKER_SORT
         )
 
         fun isBackedUp(key: String?) = key in BACKED_UP_KEYS
@@ -46,6 +49,8 @@ class PreferencesManager(context: Context) {
         put(KEY_LOCKER_TIMEOUT_MINUTES, lockerTimeoutMinutes)
         put(KEY_EXPIRY_REMINDERS, isExpiryRemindersEnabled)
         put(KEY_CUSTOM_AUTHORITIES, JSONArray(getCustomAuthorities().sorted()))
+        put(KEY_LOCKER_LAYOUT, lockerLayout.name)
+        put(KEY_LOCKER_SORT, lockerSort.name)
     }
 
     /**
@@ -66,6 +71,8 @@ class PreferencesManager(context: Context) {
             if (json.has(KEY_AUTO_CLEAR)) edit.putBoolean(KEY_AUTO_CLEAR, json.optBoolean(KEY_AUTO_CLEAR))
             if (json.has(KEY_CLEAR_TIMEOUT_SECONDS)) edit.putInt(KEY_CLEAR_TIMEOUT_SECONDS, json.optInt(KEY_CLEAR_TIMEOUT_SECONDS))
             if (json.has(KEY_LOCKER_TIMEOUT_MINUTES)) edit.putInt(KEY_LOCKER_TIMEOUT_MINUTES, json.optInt(KEY_LOCKER_TIMEOUT_MINUTES))
+            json.optString(KEY_LOCKER_LAYOUT).takeIf { it.isNotEmpty() }?.let { edit.putString(KEY_LOCKER_LAYOUT, it) }
+            json.optString(KEY_LOCKER_SORT).takeIf { it.isNotEmpty() }?.let { edit.putString(KEY_LOCKER_SORT, it) }
             if (json.has(KEY_EXPIRY_REMINDERS)) {
                 edit.putBoolean(KEY_EXPIRY_REMINDERS, json.optBoolean(KEY_EXPIRY_REMINDERS))
                 edit.putBoolean(KEY_EXPIRY_REMINDERS_ASKED, true)
@@ -83,6 +90,23 @@ class PreferencesManager(context: Context) {
     var hasAskedAboutExpiryReminders: Boolean
         get() = prefs.getBoolean(KEY_EXPIRY_REMINDERS_ASKED, false)
         set(value) = prefs.edit().putBoolean(KEY_EXPIRY_REMINDERS_ASKED, value).apply()
+
+    enum class LockerLayout(val label: String) { LIST("List"), CARDS("Cards") }
+
+    enum class LockerSort(val label: String) {
+        ADDED("Date added"),
+        MODIFIED("Last modified"),
+        EXPIRY("Next to expire"),
+        NAME("Name (A–Z)")
+    }
+
+    var lockerLayout: LockerLayout
+        get() = runCatching { LockerLayout.valueOf(prefs.getString(KEY_LOCKER_LAYOUT, null)!!) }.getOrDefault(LockerLayout.LIST)
+        set(value) = prefs.edit().putString(KEY_LOCKER_LAYOUT, value.name).apply()
+
+    var lockerSort: LockerSort
+        get() = runCatching { LockerSort.valueOf(prefs.getString(KEY_LOCKER_SORT, null)!!) }.getOrDefault(LockerSort.ADDED)
+        set(value) = prefs.edit().putString(KEY_LOCKER_SORT, value.name).apply()
 
     fun getCustomAuthorities(): Set<String> {
         return prefs.getStringSet(KEY_CUSTOM_AUTHORITIES, emptySet()) ?: emptySet()

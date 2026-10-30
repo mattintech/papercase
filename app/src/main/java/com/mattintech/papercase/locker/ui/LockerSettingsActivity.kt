@@ -18,6 +18,8 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.data.PreferencesManager
+import com.mattintech.papercase.data.PreferencesManager.LockerLayout
+import com.mattintech.papercase.data.PreferencesManager.LockerSort
 import com.mattintech.papercase.databinding.ActivityLockerSettingsBinding
 import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.backup.AutoBackupManager.Frequency
@@ -94,6 +96,15 @@ class LockerSettingsActivity : AppCompatActivity() {
             val count = keepChips().entries.firstOrNull { it.value.id == ids.firstOrNull() }?.key ?: return@setOnCheckedStateChangeListener
             AutoBackupManager.setKeepCount(this, count)
             render()
+        }
+
+        binding.chipGroupLayout.setOnCheckedStateChangeListener { _, ids ->
+            if (updatingUi) return@setOnCheckedStateChangeListener
+            prefs.lockerLayout = if (ids.firstOrNull() == binding.chipLayoutCards.id) LockerLayout.CARDS else LockerLayout.LIST
+        }
+        binding.chipGroupSort.setOnCheckedStateChangeListener { _, ids ->
+            if (updatingUi) return@setOnCheckedStateChangeListener
+            sortChips().entries.firstOrNull { it.value.id == ids.firstOrNull() }?.let { prefs.lockerSort = it.key }
         }
 
         binding.btnChooseFolder.setOnClickListener { chooseFolder() }
@@ -202,8 +213,19 @@ class LockerSettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun sortChips() = mapOf(
+        LockerSort.ADDED to binding.chipSortAdded,
+        LockerSort.MODIFIED to binding.chipSortModified,
+        LockerSort.EXPIRY to binding.chipSortExpiry,
+        LockerSort.NAME to binding.chipSortName
+    )
+
     private fun render() {
         updatingUi = true
+        binding.chipGroupLayout.check(
+            if (prefs.lockerLayout == LockerLayout.CARDS) binding.chipLayoutCards.id else binding.chipLayoutList.id
+        )
+        binding.chipGroupSort.check(sortChips().getValue(prefs.lockerSort).id)
         val enabled = AutoBackupManager.isEnabled(this)
         binding.switchAutoBackup.isChecked = enabled || enableWhenReady
         val frequency = AutoBackupManager.frequency(this)
@@ -221,6 +243,8 @@ class LockerSettingsActivity : AppCompatActivity() {
         binding.tvBackupStatus.text = backupStatus(enabled, frequency)
         binding.btnBackupNow.isEnabled = AutoBackupManager.isReady(this)
         renderSize(keep)
+        binding.tvBackupFooter.text = "Keeps the $keep most recent automatic backups. Backups you export yourself are " +
+            "never deleted. To restore, use Import Backup File with your backup password."
 
         binding.switchReminders.isChecked = prefs.isExpiryRemindersEnabled
         if (prefs.isExpiryRemindersEnabled && !ReminderNotifier.canNotify(this)) {

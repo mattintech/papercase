@@ -94,6 +94,7 @@ dependencies {
     implementation("com.squareup.okio:okio:3.15.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
 
     // Google Play build only (proprietary Google libraries, never in the F-Droid build)
     "playImplementation"("com.google.android.play:app-update-ktx:2.1.0")

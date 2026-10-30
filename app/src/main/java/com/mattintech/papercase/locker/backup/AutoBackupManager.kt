@@ -211,7 +211,7 @@ object AutoBackupManager {
         val target = snapshotFile(context)
         val tmp = File(target.parentFile, "snapshot.kdbx.tmp")
         tmp.outputStream().use { out ->
-            KdbxBackupFormat.write(out, password, documents, deletions, BackupExtras.collect(context), exactPassword = true) { doc, att ->
+            KdbxBackupFormat.write(out, password, documents, deletions, BackupExtras.collect(context), repository.getFolders(), exactPassword = true) { doc, att ->
                 if (doc.isPasswordProtected) repository.readStoredAttachmentBytes(att) else repository.readAttachmentBytes(att)
             }
         }

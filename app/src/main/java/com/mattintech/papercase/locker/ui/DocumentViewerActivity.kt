@@ -7,10 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -27,9 +25,14 @@ import com.mattintech.papercase.crypto.KeystoreHelper
 import com.mattintech.papercase.databinding.ActivityDocumentViewerBinding
 import com.mattintech.papercase.databinding.ItemViewerAttachmentBinding
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
+import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
+import com.mattintech.papercase.locker.model.DocumentIcons
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
+import com.mattintech.papercase.locker.ui.pages.PageSource
+import com.mattintech.papercase.locker.ui.pages.PageViewerDialog
+import com.mattintech.papercase.locker.ui.pages.PdfPages
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +45,7 @@ class DocumentViewerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_DOCUMENT_ID = "extra_document_id"
+        private const val PREVIEW_EDGE = 1600
 
         fun start(context: Context, documentId: String) {
             val intent = Intent(context, DocumentViewerActivity::class.java).apply {
@@ -116,7 +120,9 @@ class DocumentViewerActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
 
         binding.btnShare.setOnClickListener {
-            currentDocument?.let { promptBiometricForShare(it) }
+            currentDocument?.let { doc ->
+                confirmDecryptedShare { promptBiometricForShare(doc) }
+            }
         }
 
         binding.btnEdit.setOnClickListener {
@@ -208,7 +214,7 @@ class DocumentViewerActivity : AppCompatActivity() {
     private fun renderDocumentDetails(doc: SecureDocument) {
         binding.toolbar.title = doc.title
         binding.tvDocTitle.text = doc.title
-        binding.ivDocTypeIcon.setImageResource(doc.type.iconRes)
+        DocumentIcons.apply(binding.ivDocTypeIcon, doc)
 
         val typeText = if (doc.issuingCountry.isNotBlank()) {
             "${doc.type.displayName} • ${doc.issuingCountry}"
@@ -251,14 +257,56 @@ class DocumentViewerActivity : AppCompatActivity() {
         }
     }
 
+    /** Pages of each attachment for the full-screen viewer, filled in as attachments decrypt. */
+    private val pagesByAttachment = mutableMapOf<String, List<PageSource>>()
+    private var shownAttachments: List<DocumentAttachment> = emptyList()
+    private val openPdfs = mutableListOf<PdfPages>()
+
+    override fun onDestroy() {
+        super.onDestroy()
+        closePdfs()
+    }
+
+    private fun closePdfs() {
+        openPdfs.forEach { it.close() }
+        openPdfs.clear()
+    }
+
+    /** Badge and title for each attachment; photos in Pages & Files are numbered as pages. */
+    private fun labelsFor(attachments: List<DocumentAttachment>): Map<String, Pair<String, String>> {
+        var page = 0
+        return attachments.associate { att ->
+            att.id to when {
+                att.slot != AttachmentSlot.OTHER -> att.slot.name to att.getDisplayTitle()
+                att.isPdf -> "PDF" to att.getDisplayTitle()
+                else -> {
+                    page++
+                    "PAGE $page" to att.customTitle.ifBlank { "Page $page" }
+                }
+            }
+        }
+    }
+
+    /** Opens the full-screen viewer on [attachmentId], with every page of the document to swipe through. */
+    private fun openPages(attachmentId: String) {
+        val before = shownAttachments.takeWhile { it.id != attachmentId }
+            .sumOf { pagesByAttachment[it.id]?.size ?: 0 }
+        val all = shownAttachments.flatMap { pagesByAttachment[it.id].orEmpty() }
+        if (all.isNotEmpty()) PageViewerDialog(this, all, before.coerceAtMost(all.size - 1)).show()
+    }
+
     private fun decryptAndRenderAttachments(attachments: List<DocumentAttachment>, dek: SecretKey? = null) {
         binding.layoutDecryptedAttachments.removeAllViews()
+        closePdfs()
+        pagesByAttachment.clear()
+        shownAttachments = attachments
 
         if (attachments.isEmpty()) {
             binding.tvAttachmentsHeader.visibility = View.GONE
             return
         }
         binding.tvAttachmentsHeader.visibility = View.VISIBLE
+        val labels = labelsFor(attachments)
 
         attachments.forEach { attachment ->
             val itemBinding = ItemViewerAttachmentBinding.inflate(
@@ -266,14 +314,16 @@ class DocumentViewerActivity : AppCompatActivity() {
                 binding.layoutDecryptedAttachments,
                 false
             )
-            itemBinding.tvAttachmentSlotBadge.text = attachment.slot.name
-            itemBinding.tvAttachmentTitle.text = attachment.getDisplayTitle()
-            itemBinding.tvAttachmentSub.text = "${attachment.fileName} • ${formatFileSize(attachment.sizeBytes)} • Tap to enlarge"
+            val (badge, title) = labels.getValue(attachment.id)
+            itemBinding.tvAttachmentSlotBadge.text = badge
+            itemBinding.tvAttachmentTitle.text = title
+            itemBinding.tvAttachmentSub.text = "${formatFileSize(attachment.sizeBytes)} • Tap to zoom"
             itemBinding.progressDecrypt.visibility = View.VISIBLE
 
             itemBinding.btnShareAttachment.setOnClickListener {
-                promptBiometricForSingleAttachmentShare(attachment)
+                confirmDecryptedShare { promptBiometricForSingleAttachmentShare(attachment) }
             }
+            itemBinding.ivAttachmentImage.setOnClickListener { openPages(attachment.id) }
 
             binding.layoutDecryptedAttachments.addView(itemBinding.root)
 
@@ -288,20 +338,15 @@ class DocumentViewerActivity : AppCompatActivity() {
                         return@launch
                     }
 
-                    val isPdf = attachment.mimeType.contains("pdf", ignoreCase = true) ||
-                            attachment.fileName.endsWith(".pdf", ignoreCase = true)
-
-                    if (isPdf) {
-                        renderPdfPages(decryptedBytes, itemBinding, attachment)
+                    if (attachment.isPdf) {
+                        renderPdf(decryptedBytes, itemBinding, attachment, title)
                     } else {
                         val bitmap = OrientedBitmap.decode(decryptedBytes)
                         withContext(Dispatchers.Main) {
                             itemBinding.progressDecrypt.visibility = View.GONE
                             if (bitmap != null) {
                                 itemBinding.ivAttachmentImage.setImageBitmap(bitmap)
-                                itemBinding.ivAttachmentImage.setOnClickListener {
-                                    showFullScreenImage(bitmap, attachment.getDisplayTitle())
-                                }
+                                pagesByAttachment[attachment.id] = listOf(PageSource.Image(bitmap, title))
                             }
                         }
                     }
@@ -315,21 +360,6 @@ class DocumentViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun showFullScreenImage(bitmap: Bitmap, title: String) {
-        val imageView = android.widget.ImageView(this).apply {
-            setImageBitmap(bitmap)
-            adjustViewBounds = true
-            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            setPadding(16, 16, 16, 16)
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle(title)
-            .setView(imageView)
-            .setPositiveButton("Close", null)
-            .show()
-    }
-
     private fun formatFileSize(bytes: Long): String {
         return when {
             bytes >= 1024 * 1024 -> String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
@@ -339,52 +369,50 @@ class DocumentViewerActivity : AppCompatActivity() {
     }
 
     /** Shows the first page of a PDF attachment. Always hides the item's spinner when done. */
-    private suspend fun renderPdfPages(
+    /** Shows the first page inline; every page can be opened full screen. */
+    private suspend fun renderPdf(
         pdfBytes: ByteArray,
         itemBinding: ItemViewerAttachmentBinding,
-        attachment: DocumentAttachment
+        attachment: DocumentAttachment,
+        title: String
     ) = withContext(Dispatchers.IO) {
-        // PdfRenderer needs a file; it's deleted as soon as the page is drawn
-        val tempPdfFile = File(cacheDir, "temp_view_${System.currentTimeMillis()}.pdf")
-        var bitmap: Bitmap? = null
-        var pageCount = 0
-        try {
-            FileOutputStream(tempPdfFile).use { it.write(pdfBytes) }
-            ParcelFileDescriptor.open(tempPdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                PdfRenderer(pfd).use { renderer ->
-                    pageCount = renderer.pageCount
-                    if (pageCount > 0) {
-                        renderer.openPage(0).use { page ->
-                            bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888).also {
-                                // PDF pages have no background of their own; without this they render transparent
-                                it.eraseColor(android.graphics.Color.WHITE)
-                                page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            tempPdfFile.delete()
-        }
+        val pdf = runCatching { PdfPages.open(pdfBytes) }.getOrNull()
+        val preview = pdf?.takeIf { it.pageCount > 0 }?.let { runCatching { it.render(0, PREVIEW_EDGE) }.getOrNull() }
 
         withContext(Dispatchers.Main) {
             itemBinding.progressDecrypt.visibility = View.GONE
-            val page = bitmap
-            if (page != null) {
-                itemBinding.ivAttachmentImage.setImageBitmap(page)
-                itemBinding.ivAttachmentImage.setOnClickListener {
-                    showFullScreenImage(page, attachment.getDisplayTitle())
-                }
-                if (pageCount > 1) {
-                    itemBinding.tvAttachmentSub.text = "${attachment.fileName} • page 1 of $pageCount • Share to see all pages"
-                }
-            } else {
+            if (pdf == null || preview == null || isDestroyed) {
+                pdf?.close()
                 itemBinding.tvAttachmentSub.text = "${attachment.fileName} • Can't preview this PDF. Use Share to open it."
+                return@withContext
+            }
+            openPdfs.add(pdf)
+            val count = pdf.pageCount
+            pagesByAttachment[attachment.id] = (0 until count).map { i ->
+                PageSource.PdfPage(pdf, i, if (count > 1) "$title, page ${i + 1}" else title)
+            }
+            itemBinding.ivAttachmentImage.setImageBitmap(preview)
+            if (count > 1) {
+                itemBinding.tvAttachmentSub.text = "$count pages • ${formatFileSize(attachment.sizeBytes)} • Tap to view all pages"
             }
         }
+    }
+
+    /**
+     * Sharing hands over a decrypted copy: whatever app receives it (WhatsApp, email, a Files folder)
+     * keeps it unprotected, outside the locker. Say so before going ahead.
+     */
+    private fun confirmDecryptedShare(onConfirm: () -> Unit) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Share a decrypted copy?")
+            .setMessage(
+                "Sharing sends an unencrypted copy. The app you share to, for example WhatsApp, " +
+                    "email or Files, keeps it outside your locker, where anyone with access to that app " +
+                    "or device can open it. Papercase can't delete it afterwards."
+            )
+            .setPositiveButton("Share") { _, _ -> onConfirm() }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun promptBiometricForShare(doc: SecureDocument) {
@@ -408,7 +436,7 @@ class DocumentViewerActivity : AppCompatActivity() {
         // Prompt biometric before sharing sensitive file attachment
         val status = BiometricAuthHelper.checkBiometricAvailability(this)
         if (status !is BiometricAuthHelper.BiometricStatus.Ready) {
-            shareAttachmentDirectly(doc.attachments.first())
+            shareAllAttachments(doc)
             return
         }
 
@@ -420,14 +448,14 @@ class DocumentViewerActivity : AppCompatActivity() {
                 subtitle = "Confirm fingerprint to export/share sensitive document",
                 cipher = encryptCipher,
                 onSuccess = {
-                    shareAttachmentDirectly(doc.attachments.first())
+                    shareAllAttachments(doc)
                 },
                 onError = { _, msg ->
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 }
             )
         } catch (e: Exception) {
-            shareAttachmentDirectly(doc.attachments.first())
+            shareAllAttachments(doc)
         }
     }
 
@@ -454,6 +482,24 @@ class DocumentViewerActivity : AppCompatActivity() {
             )
         } catch (e: Exception) {
             shareAttachmentDirectly(attachment)
+        }
+    }
+
+    /** Every page and file of the document, in order, so multi-page documents share whole. */
+    private fun shareAllAttachments(doc: SecureDocument) {
+        if (doc.attachments.size == 1) return shareAttachmentDirectly(doc.attachments.first())
+        lifecycleScope.launch {
+            try {
+                val uris = ArrayList(doc.attachments.map { repository.exportAttachmentForShare(it, unlockedDek) })
+                val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = if (doc.attachments.all { it.mimeType.startsWith("image/") }) "image/*" else "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "Share ${doc.title}"))
+            } catch (e: Exception) {
+                Toast.makeText(this@DocumentViewerActivity, "Share error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

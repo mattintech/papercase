@@ -104,22 +104,64 @@
 
             </com.google.android.material.chip.ChipGroup>
 
-            <!-- Document Title -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/tilTitle"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            <!-- Icon and Document Title -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:hint="Title *">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etTitle"
-                    android:layout_width="match_parent"
+                <FrameLayout
+                    android:id="@+id/btnChangeIcon"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_marginEnd="12dp"
+                    android:layout_marginTop="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:contentDescription="Change icon"
+                    android:focusable="true">
+
+                    <ImageView
+                        android:id="@+id/ivDocIcon"
+                        android:layout_width="52dp"
+                        android:layout_height="52dp"
+                        android:layout_gravity="center"
+                        android:background="@drawable/bg_icon_circle"
+                        android:importantForAccessibility="no"
+                        android:padding="12dp"
+                        android:src="@drawable/ic_badge" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="bottom|end"
+                        android:background="@drawable/bg_icon_edit_badge"
+                        android:importantForAccessibility="no"
+                        android:padding="4dp"
+                        android:src="@drawable/ic_edit"
+                        app:tint="?attr/colorOnPrimary" />
+
+                </FrameLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilTitle"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:inputType="textCapWords" />
+                    android:layout_weight="1"
+                    android:hint="Title *">
 
-            </com.google.android.material.textfield.TextInputLayout>
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textCapWords" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
 
             <!-- Document Number & Expiry Date Row -->
             <LinearLayout
@@ -733,7 +775,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Additional Files &amp; PDFs"
+                        android:text="Pages &amp; Files"
                         android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                         android:textColor="?attr/colorPrimary"
                         android:textStyle="bold" />
@@ -742,7 +784,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="Extra pages, renewal receipts, insurance documents, or PDF scans"
+                        android:text="Capture every page of a multi-page document, or attach PDFs and receipts"
                         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                         android:textColor="?attr/colorOnSurfaceVariant" />
 
@@ -768,7 +810,7 @@
                             android:layout_weight="1"
                             android:insetTop="0dp"
                             android:insetBottom="0dp"
-                            android:text="+ Photo"
+                            android:text="+ Pages"
                             app:icon="@drawable/ic_camera"
                             app:iconSize="18dp"
                             app:iconTint="?attr/colorOnSecondaryContainer" />
@@ -781,7 +823,7 @@
                             android:layout_weight="1"
                             android:insetTop="0dp"
                             android:insetBottom="0dp"
-                            android:text="+ PDF / File"
+                            android:text="+ PDF"
                             app:icon="@drawable/ic_description"
                             app:iconSize="18dp"
                             app:iconTint="?attr/colorOnSecondaryContainer" />

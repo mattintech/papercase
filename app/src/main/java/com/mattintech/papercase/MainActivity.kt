@@ -16,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -26,6 +27,7 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
@@ -47,7 +49,10 @@ import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.crypto.LockerKeyInvalidatedException
 import com.mattintech.papercase.locker.crypto.LockerLockedException
 import com.mattintech.papercase.locker.model.DocumentType
+import com.mattintech.papercase.locker.model.Folder
+import com.mattintech.papercase.locker.model.FolderTree
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ExpiryDates
 import com.mattintech.papercase.locker.reminders.ReminderNotifier
 import com.mattintech.papercase.locker.reminders.ReminderStore
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
@@ -61,8 +66,11 @@ import com.mattintech.papercase.locker.transfer.VaultConflictReport
 import com.mattintech.papercase.locker.transfer.VaultExportImportManager
 import com.mattintech.papercase.locker.ui.AddDocumentActivity
 import com.mattintech.papercase.locker.ui.DocumentViewerActivity
+import com.mattintech.papercase.locker.ui.LockerActions
+import com.mattintech.papercase.locker.ui.LockerAdapter
+import com.mattintech.papercase.locker.ui.LockerItem
 import com.mattintech.papercase.locker.ui.LockerSettingsActivity
-import com.mattintech.papercase.locker.ui.SecureDocumentsAdapter
+import com.mattintech.papercase.locker.ui.ThumbnailLoader
 import com.mattintech.papercase.store.AppUpdatePrompt
 import java.io.File
 import kotlin.coroutines.resume
@@ -85,7 +93,28 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
     private lateinit var lockerRepository: SecureLockerRepository
-    private lateinit var documentsAdapter: SecureDocumentsAdapter
+    private lateinit var lockerAdapter: LockerAdapter
+    private lateinit var lockerActions: LockerActions
+    private lateinit var thumbnailLoader: ThumbnailLoader
+    private var folders: List<Folder> = emptyList()
+    /** Folder being shown; blank = top level of the locker. */
+    private var currentFolderId = ""
+    private var typeFilter: DocumentType? = null
+    private var onSaveFolderPicked: ((Uri) -> Unit)? = null
+
+    private val pickSaveFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
+            val callback = onSaveFolderPicked
+            onSaveFolderPicked = null
+            if (uri != null) callback?.invoke(uri)
+        }
+
+    // Back goes up a folder before leaving the app
+    private val folderBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = openFolder(FolderTree.path(folders, currentFolderId).dropLast(1).lastOrNull()?.id ?: "")
+    }
 
     private var allDocuments: List<SecureDocument> = emptyList()
     private var isLockerUnlocked: Boolean
@@ -230,6 +259,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             isLockerUnlocked = true
             if (binding.layoutSecureLocker.visibility == View.VISIBLE) {
+                // Layout or sort may have changed in Settings
+                applyLockerLayout()
                 loadSecureLockerDocuments()
             }
         }
@@ -540,10 +571,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupLocker() {
-        documentsAdapter = SecureDocumentsAdapter(
-            onItemClick = { doc ->
-                DocumentViewerActivity.start(this, doc.id)
+        thumbnailLoader = ThumbnailLoader(lockerRepository)
+        lockerActions = LockerActions(
+            activity = this,
+            repository = lockerRepository,
+            pickSaveFolder = { onPicked ->
+                onSaveFolderPicked = onPicked
+                SessionManager.isExternalOperationActive = true
+                pickSaveFolderLauncher.launch(null)
             },
+            onChanged = { loadSecureLockerDocuments() }
+        )
+        lockerAdapter = LockerAdapter(
+            scope = lifecycleScope,
+            thumbnails = thumbnailLoader,
+            onOpenFolder = { openFolder(it.id) },
+            onFolderMore = { folder, anchor -> lockerActions.showFolderMenu(folder, anchor, folders) },
+            onOpenDocument = { doc -> DocumentViewerActivity.start(this, doc.id) },
+            onDocumentMore = { doc -> lockerActions.showDocumentSheet(doc, folders) },
             onCopyNumber = { doc ->
                 val timeout = if (prefs.isAutoClearEnabled) prefs.clearTimeoutSeconds else 0
                 ClipboardSecurityManager.copyToClipboard(
@@ -555,18 +600,20 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Copied ${doc.documentNumber}", Toast.LENGTH_SHORT).show()
             }
         )
-
-        binding.rvSecureDocuments.apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = documentsAdapter
-        }
+        binding.rvSecureDocuments.adapter = lockerAdapter
+        applyLockerLayout()
+        onBackPressedDispatcher.addCallback(this, folderBackCallback)
 
         binding.fabAddDocument.setOnClickListener {
-            AddDocumentActivity.start(this)
+            AddDocumentActivity.start(this, folderId = currentFolderId)
         }
 
         binding.btnAddFirstDocument.setOnClickListener {
-            AddDocumentActivity.start(this)
+            AddDocumentActivity.start(this, folderId = currentFolderId)
+        }
+
+        binding.btnNewFolder.setOnClickListener {
+            lockerActions.promptNewFolder(currentFolderId)
         }
 
         // Filter chips
@@ -581,6 +628,113 @@ class MainActivity : AppCompatActivity() {
             filterDocuments(filterType)
         }
     }
+
+    /** List rows or a grid of cards (Settings > Locker display); more columns on wide screens. */
+    private fun applyLockerLayout() {
+        val cards = prefs.lockerLayout == PreferencesManager.LockerLayout.CARDS
+        val rv = binding.rvSecureDocuments
+        if (cards) {
+            val columns = (resources.configuration.screenWidthDp / 180).coerceIn(2, 5)
+            val current = rv.layoutManager as? GridLayoutManager
+            if (current?.spanCount != columns) rv.layoutManager = GridLayoutManager(this, columns).apply {
+                // The last folder fills its row, so documents start on a row of their own and folder
+                // tiles aren't stretched to the height of a document card
+                spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                    override fun getSpanSize(position: Int): Int {
+                        val items = lockerAdapter.currentList
+                        val isLastFolder = items.getOrNull(position) is LockerItem.FolderItem &&
+                            items.getOrNull(position + 1) !is LockerItem.FolderItem
+                        return if (isLastFolder) columns - position % columns else 1
+                    }
+                }
+            }
+        } else if (rv.layoutManager !is LinearLayoutManager || rv.layoutManager is GridLayoutManager) {
+            rv.layoutManager = LinearLayoutManager(this)
+        }
+        // Cards carry their own 6dp margins; pull the grid out so its edges line up with the chips
+        val inset = if (cards) (-6 * resources.displayMetrics.density).toInt() else 0
+        rv.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            marginStart = inset
+            marginEnd = inset
+        }
+        lockerAdapter.cards = cards
+    }
+
+    private fun openFolder(folderId: String) {
+        currentFolderId = folderId
+        renderLocker()
+        binding.rvSecureDocuments.scrollToPosition(0)
+    }
+
+    /** Folder tiles for the current folder, then its documents, filtered by type and sorted. */
+    private fun renderLocker() {
+        currentFolderId = FolderTree.resolve(folders, currentFolderId)
+        folderBackCallback.isEnabled = currentFolderId.isNotEmpty()
+        renderBreadcrumbs()
+
+        val docsHere = allDocuments.filter { FolderTree.resolve(folders, it.folderId) == currentFolderId }
+            .filter { typeFilter == null || it.type == typeFilter }
+        val subfolders = FolderTree.children(folders, currentFolderId).map { f ->
+            LockerItem.FolderItem(
+                folder = f,
+                folderCount = FolderTree.children(folders, f.id).size,
+                documentCount = allDocuments.count { FolderTree.resolve(folders, it.folderId) == f.id },
+                expiredCount = FolderTree.subtree(folders, f.id).let { inside ->
+                    allDocuments.count { FolderTree.resolve(folders, it.folderId) in inside && LockerAdapter.isExpired(it) }
+                }
+            )
+        }
+        val items = subfolders + sortDocuments(docsHere).map { LockerItem.DocItem(it) }
+        lockerAdapter.submitList(items)
+
+        val lockerEmpty = allDocuments.isEmpty() && folders.isEmpty()
+        binding.cardEmptyLocker.visibility = if (lockerEmpty) View.VISIBLE else View.GONE
+        binding.rvSecureDocuments.visibility = if (lockerEmpty) View.GONE else View.VISIBLE
+        binding.tvFolderEmpty.visibility = if (!lockerEmpty && items.isEmpty()) View.VISIBLE else View.GONE
+        binding.tvFolderEmpty.text = if (typeFilter != null) "No documents of this type here." else
+            "Nothing in this folder yet. Tap Add Document to put something here."
+    }
+
+    private fun sortDocuments(docs: List<SecureDocument>): List<SecureDocument> = when (prefs.lockerSort) {
+        PreferencesManager.LockerSort.ADDED -> docs.sortedByDescending { it.createdAt }
+        PreferencesManager.LockerSort.MODIFIED -> docs.sortedByDescending { it.updatedAt }
+        PreferencesManager.LockerSort.NAME -> docs.sortedBy { it.title.lowercase() }
+        // Soonest (and already expired) first; documents without a date at the end
+        PreferencesManager.LockerSort.EXPIRY -> docs.sortedWith(
+            compareBy<SecureDocument, java.time.LocalDate?>(nullsLast()) { ExpiryDates.parse(it.expirationDate) }
+                .thenBy { it.title.lowercase() }
+        )
+    }
+
+    /** Locker › Kids › Jane, each part tappable to go back up. */
+    private fun renderBreadcrumbs() {
+        val bar = binding.layoutBreadcrumbs
+        bar.removeAllViews()
+        // At the top level the toolbar already says Locker
+        if (currentFolderId.isEmpty()) return
+        val path = listOf("" to "Locker") + FolderTree.path(folders, currentFolderId).map { it.id to it.name }
+        path.forEachIndexed { i, (id, name) ->
+            if (i > 0) bar.addView(TextView(this).apply {
+                text = "›"
+                setPadding(dp(6), 0, dp(6), 0)
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
+                setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant))
+            })
+            val last = i == path.lastIndex
+            bar.addView(TextView(this).apply {
+                text = name
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
+                setTextColor(MaterialColors.getColor(this,
+                    if (last) com.google.android.material.R.attr.colorOnSurface else androidx.appcompat.R.attr.colorPrimary))
+                if (last) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(dp(2), dp(10), dp(2), dp(10))
+                if (!last) setOnClickListener { openFolder(id) }
+            })
+        }
+        binding.scrollBreadcrumbs.post { binding.scrollBreadcrumbs.fullScroll(View.FOCUS_RIGHT) }
+    }
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun showPassphraseVaultTab() {
         binding.nestedScrollView.visibility = View.VISIBLE
@@ -656,7 +810,9 @@ class MainActivity : AppCompatActivity() {
     private fun lockLockerInPlace() {
         isLockerUnlocked = false
         allDocuments = emptyList()
-        documentsAdapter.submitList(emptyList())
+        folders = emptyList()
+        lockerAdapter.submitList(emptyList())
+        thumbnailLoader.clear()
         if (binding.layoutSecureLocker.visibility == View.VISIBLE) showLockedLocker()
     }
 
@@ -683,6 +839,7 @@ class MainActivity : AppCompatActivity() {
         binding.layoutLockerContent.visibility = View.VISIBLE
         binding.fabAddDocument.show()
         binding.tvToolbarTitle.text = "Locker"
+        applyLockerLayout()
         migrateLockerKeyIfNeeded()
         // The locker key is usable right now: bring the automatic backup snapshot up to date
         lifecycleScope.launch { AutoBackupManager.refreshIfNeeded(this@MainActivity) }
@@ -758,6 +915,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadSecureLockerDocuments() {
         lifecycleScope.launch {
             allDocuments = try {
+                folders = lockerRepository.getFolders()
                 lockerRepository.getAllDocuments()
             } catch (e: LockerLockedException) {
                 handleLockerLocked()
@@ -766,7 +924,7 @@ class MainActivity : AppCompatActivity() {
                 showLockerKeyLostDialog()
                 return@launch
             }
-            filterDocuments(null)
+            renderLocker()
         }
     }
 
@@ -795,20 +953,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun filterDocuments(type: DocumentType?) {
-        val filtered = if (type == null) {
-            allDocuments
-        } else {
-            allDocuments.filter { it.type == type }
-        }
-
-        documentsAdapter.submitList(filtered)
-        if (filtered.isEmpty()) {
-            binding.cardEmptyLocker.visibility = View.VISIBLE
-            binding.rvSecureDocuments.visibility = View.GONE
-        } else {
-            binding.cardEmptyLocker.visibility = View.GONE
-            binding.rvSecureDocuments.visibility = View.VISIBLE
-        }
+        typeFilter = type
+        renderLocker()
     }
 
     private fun updateVaultStatusUI() {
@@ -1445,6 +1591,12 @@ class MainActivity : AppCompatActivity() {
     private fun showConflictResolutionOrCommit(report: VaultConflictReport) {
         if (!report.hasChanges) {
             restoreBackupExtras(report, replaced = false)
+            if (report.incomingFolders.isNotEmpty() || report.incomingDeletions.isNotEmpty()) {
+                lifecycleScope.launch {
+                    runCatching { lockerRepository.mergeFolders(report.incomingFolders, report.incomingDeletions) }
+                    loadSecureLockerDocuments()
+                }
+            }
             Toast.makeText(this, "Already up to date. Nothing to import.", Toast.LENGTH_SHORT).show()
             return
         }
