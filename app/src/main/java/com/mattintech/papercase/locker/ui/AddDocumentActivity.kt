@@ -406,13 +406,21 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun showDatePicker() {
+        // MaterialDatePicker works in UTC: the selection is midnight UTC of the picked day.
+        // Formatting it in local time would shift the date back a day west of UTC.
+        val utcFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val current = binding.etExpiry.text?.toString()?.trim().orEmpty()
+        val currentMs = runCatching { utcFormatter.parse(current)?.time }.getOrNull()
+
         val picker = MaterialDatePicker.Builder.datePicker()
             .setTitleText("Select Expiration Date")
+            .apply { if (currentMs != null) setSelection(currentMs) }
             .build()
 
         picker.addOnPositiveButtonClickListener { selectionMs ->
-            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val formattedDate = formatter.format(Date(selectionMs))
+            val formattedDate = utcFormatter.format(Date(selectionMs))
             binding.etExpiry.setText(formattedDate)
         }
 
