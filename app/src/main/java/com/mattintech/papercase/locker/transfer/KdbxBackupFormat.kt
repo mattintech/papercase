@@ -21,10 +21,12 @@ import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
 import app.keemobile.kotpass.models.TimeData
+import com.mattintech.papercase.locker.backup.BackupExtras
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ReminderEntry
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import java.io.InputStream
@@ -39,8 +41,9 @@ import java.util.UUID
  * opened in KeePassXC / KeePassDX with the backup token as the master password.
  *
  * Each document is an entry; attachments are entry attachments. Papercase-only details (document
- * type, photo slots, password-protection key material) travel in the entry's custom data, so an
- * entry edited in another KeePass app still imports.
+ * type, photo slots, password-protection key material, reminder status) travel in the entry's custom
+ * data, so an entry edited in another KeePass app still imports. App settings are in the database's
+ * custom data, and the master passphrase is its own entry.
  */
 internal object KdbxBackupFormat {
 
@@ -49,7 +52,8 @@ internal object KdbxBackupFormat {
         /** Attachment id -> bytes (ciphertext for password-protected documents). */
         val files: Map<String, ByteArray>,
         /** Document id -> deletedAt (ms). */
-        val deletions: Map<String, Long>
+        val deletions: Map<String, Long>,
+        val extras: BackupExtras
     )
 
     /** Attachment bytes as stored in the backup for [doc]. */
@@ -62,6 +66,11 @@ internal object KdbxBackupFormat {
     // Backups made before the rename to Papercase
     private const val LEGACY_KEY_DOCUMENT = "SecurePass.Document"
     private const val LEGACY_KEY_UPDATED_AT = "SecurePass.UpdatedAt"
+    private const val KEY_SETTINGS = "Papercase.Settings"
+    private const val KEY_REMINDER = "Papercase.Reminder"
+    // Marks the entry holding the master passphrase (not a document)
+    private const val KEY_PASSPHRASE = "Papercase.Passphrase"
+    private const val PASSPHRASE_TITLE = "Papercase passphrase"
     private const val FIELD_TYPE = "Document Type"
     private const val FIELD_EXPIRES = "Expiration Date"
     private const val FIELD_COUNTRY = "Issuing Country"
@@ -90,11 +99,13 @@ internal object KdbxBackupFormat {
         token: String,
         documents: List<SecureDocument>,
         deletions: Map<String, Long>,
+        extras: BackupExtras = BackupExtras(),
         exactPassword: Boolean = false,
         attachments: AttachmentSource
     ) {
         val random = SecureRandom()
         val binaries = linkedMapOf<okio.ByteString, BinaryData>()
+        val reminders = extras.reminders.associateBy { it.docId }
         val entries = documents.map { doc ->
             val usedNames = mutableSetOf<String>()
             val refs = mutableListOf<BinaryReference>()
@@ -112,12 +123,17 @@ internal object KdbxBackupFormat {
                 // encryptedFileName is device-local; reuse it to remember the attachment's name in the backup
                 attachmentMeta.add(att.copy(encryptedFileName = name))
             }
-            toEntry(doc.copy(attachments = attachmentMeta), refs)
-        }
+            toEntry(doc.copy(attachments = attachmentMeta), refs, reminders[doc.id])
+        } + listOfNotNull(extras.passphrase?.let(::passphraseEntry))
 
         val database = KeePassDatabase.Ver4x.create(
             rootName = "Papercase",
-            meta = Meta(generator = "Papercase", name = "Papercase Backup", recycleBinEnabled = false),
+            meta = Meta(
+                generator = "Papercase",
+                name = "Papercase Backup",
+                recycleBinEnabled = false,
+                customData = extras.settings?.let { mapOf(KEY_SETTINGS to CustomDataValue(it.toString())) }.orEmpty()
+            ),
             credentials = credentials(token, exactPassword),
             random = random
         ).let { db ->
@@ -171,9 +187,19 @@ internal object KdbxBackupFormat {
         val binaries = database.binaries
         val documents = mutableListOf<SecureDocument>()
         val files = mutableMapOf<String, ByteArray>()
+        var passphrase: String? = null
+        val reminders = mutableListOf<ReminderEntry>()
 
         for (entry in allEntries(database.content.group, if (meta.recycleBinEnabled) meta.recycleBinUuid else null)) {
+            if (entry.customData.containsKey(KEY_PASSPHRASE)) {
+                passphrase = entry.fields[BasicField.Password()]?.content?.takeIf { it.isNotEmpty() }
+                continue
+            }
             val doc = fromEntry(entry)
+            entry.customData[KEY_REMINDER]?.value?.let { json ->
+                runCatching { ReminderEntry.fromJson(JSONObject(json)) }.getOrNull()
+                    ?.let { reminders.add(it.copy(docId = doc.id)) }
+            }
             val attachments = mutableListOf<DocumentAttachment>()
             for (ref in entry.binaries) {
                 val bytes = binaries[ref.hash]?.getContent() ?: continue
@@ -198,10 +224,25 @@ internal object KdbxBackupFormat {
             // KDBX stores seconds; round up so a delete isn't treated as older than an edit in the same second
             obj.id.toString() to (obj.deletionTime.epochSecond * 1000 + 999)
         }
-        return Contents(documents, files, deletions)
+        val settings = meta.customData[KEY_SETTINGS]?.value?.let { runCatching { JSONObject(it) }.getOrNull() }
+        return Contents(documents, files, deletions, BackupExtras(settings, passphrase, reminders))
     }
 
-    private fun toEntry(doc: SecureDocument, refs: List<BinaryReference>): Entry {
+    /** Shown as a normal password entry in KeePass apps. */
+    private fun passphraseEntry(passphrase: String) = Entry(
+        uuid = UUID.randomUUID(),
+        icon = PredefinedIcon.Key,
+        fields = EntryFields.of(
+            BasicField.Title() to EntryValue.Plain(PASSPHRASE_TITLE),
+            BasicField.UserName() to EntryValue.Plain(""),
+            BasicField.Password() to EntryValue.Encrypted(EncryptedValue.fromString(passphrase)),
+            BasicField.Url() to EntryValue.Plain(""),
+            BasicField.Notes() to EntryValue.Plain("The master passphrase stored in Papercase.")
+        ),
+        customData = mapOf(KEY_PASSPHRASE to CustomDataValue("1"))
+    )
+
+    private fun toEntry(doc: SecureDocument, refs: List<BinaryReference>, reminder: ReminderEntry?): Entry {
         val fields = EntryFields.of(
             BasicField.Title() to EntryValue.Plain(doc.title),
             BasicField.UserName() to EntryValue.Plain(doc.documentNumber),
@@ -228,7 +269,7 @@ internal object KdbxBackupFormat {
                 KEY_DOCUMENT to CustomDataValue(doc.toJson().toString()),
                 // KDBX timestamps are whole seconds; keep the exact time so unchanged documents match
                 KEY_UPDATED_AT to CustomDataValue(doc.updatedAt.toString())
-            )
+            ) + listOfNotNull(reminder?.let { KEY_REMINDER to CustomDataValue(it.toJson().toString()) })
         )
     }
 

@@ -41,8 +41,11 @@ object AutoBackupManager {
         data class Failed(val message: String) : Result()
     }
 
-    /** Automatic backups kept in the folder; older ones are deleted. Manual exports are never touched. */
-    const val KEEP = 5
+    /** Automatic backups kept in the folder by default; older ones are deleted. Manual exports are never touched. */
+    private const val DEFAULT_KEEP = 5
+
+    /** Above this, Settings warns that each kept backup is large. */
+    const val LARGE_BACKUP_BYTES = 250L * 1024 * 1024
     private const val FILE_PREFIX = "Papercase_Auto_"
     private const val SNAPSHOT_DELAY_MS = 4_000L
 
@@ -53,6 +56,12 @@ object AutoBackupManager {
     private const val K_PW_CIPHER = "password_cipher"
     private const val K_PW_IV = "password_iv"
     private const val K_PW_KEY_VERSION = "password_key_version"
+    // The master passphrase, so backups can include it. Its own key needs a fingerprint for every use,
+    // so a copy is kept under the locker key, which background backups can use after an unlock.
+    private const val K_PP_CIPHER = "passphrase_cipher"
+    private const val K_PP_IV = "passphrase_iv"
+    private const val K_PP_KEY_VERSION = "passphrase_key_version"
+    private const val K_KEEP = "keep_count"
     private const val K_DIRTY = "snapshot_dirty"
     private const val K_LAST_AT = "last_backup_at"
     private const val K_LAST_HASH = "last_backup_hash"
@@ -69,6 +78,12 @@ object AutoBackupManager {
     fun frequency(context: Context): Frequency =
         runCatching { Frequency.valueOf(prefs(context).getString(K_FREQUENCY, null)!!) }.getOrDefault(Frequency.WEEKLY)
     fun setFrequency(context: Context, f: Frequency) = prefs(context).edit { putString(K_FREQUENCY, f.name) }
+
+    fun keepCount(context: Context) = prefs(context).getInt(K_KEEP, DEFAULT_KEEP)
+    fun setKeepCount(context: Context, count: Int) = prefs(context).edit { putInt(K_KEEP, count) }
+
+    /** Size of the latest prepared backup, or 0 if there isn't one yet. */
+    fun backupSize(context: Context): Long = snapshotFile(context).length()
 
     fun folder(context: Context): Uri? = prefs(context).getString(K_FOLDER, null)?.let(Uri::parse)
 
@@ -97,40 +112,67 @@ object AutoBackupManager {
 
     /** Must be called while the locker is unlocked (the password is encrypted with the locker key). */
     suspend fun setPassword(context: Context, password: String) = withContext(Dispatchers.IO) {
+        writeSecret(context, K_PW_CIPHER, K_PW_IV, K_PW_KEY_VERSION, password)
+        prefs(context).edit { remove(K_LAST_HASH) }
+    }
+
+    private fun readPassword(context: Context) = readSecret(context, K_PW_CIPHER, K_PW_IV, K_PW_KEY_VERSION)
+
+    /** Keeps a copy of the master passphrase for backups. Call while the locker is unlocked. */
+    suspend fun rememberPassphrase(context: Context, passphrase: String) = withContext(Dispatchers.IO) {
+        if (readPassphrase(context) == passphrase) return@withContext
+        writeSecret(context, K_PP_CIPHER, K_PP_IV, K_PP_KEY_VERSION, passphrase)
+        onLockerChanged(context)
+    }
+
+    fun forgetPassphrase(context: Context) {
+        prefs(context).edit { remove(K_PP_CIPHER); remove(K_PP_IV); remove(K_PP_KEY_VERSION) }
+        onLockerChanged(context)
+    }
+
+    /** The passphrase copy, or null if none is stored. Needs the locker unlocked. */
+    fun readPassphrase(context: Context) = readSecret(context, K_PP_CIPHER, K_PP_IV, K_PP_KEY_VERSION)
+
+    private suspend fun writeSecret(context: Context, kCipher: String, kIv: String, kVersion: String, value: String) {
         val version = SecureLockerRepository(context).currentKeyVersion()
-        val (cipher, iv) = LockerKeystoreHelper.encryptString(password, version)
+        val (cipher, iv) = LockerKeystoreHelper.encryptString(value, version)
         prefs(context).edit {
-            putString(K_PW_CIPHER, cipher)
-            putString(K_PW_IV, iv)
-            putInt(K_PW_KEY_VERSION, version)
+            putString(kCipher, cipher)
+            putString(kIv, iv)
+            putInt(kVersion, version)
             putBoolean(K_DIRTY, true)
-            remove(K_LAST_HASH)
         }
     }
 
-    private fun readPassword(context: Context): String? {
+    private fun readSecret(context: Context, kCipher: String, kIv: String, kVersion: String): String? {
         val p = prefs(context)
-        val cipher = p.getString(K_PW_CIPHER, null) ?: return null
-        val iv = p.getString(K_PW_IV, null) ?: return null
-        return LockerKeystoreHelper.decryptString(cipher, iv, p.getInt(K_PW_KEY_VERSION, LockerKeystoreHelper.KEY_VERSION_LEGACY))
+        val cipher = p.getString(kCipher, null) ?: return null
+        val iv = p.getString(kIv, null) ?: return null
+        return LockerKeystoreHelper.decryptString(cipher, iv, p.getInt(kVersion, LockerKeystoreHelper.KEY_VERSION_LEGACY))
     }
 
-    /** Re-encrypts the stored password when the locker moves to a new key. */
-    fun migratePassword(context: Context, fromVersion: Int, toVersion: Int) {
+    /** Re-encrypts the stored secrets when the locker moves to a new key. */
+    fun migrateSecrets(context: Context, fromVersion: Int, toVersion: Int) {
+        migrateSecret(context, K_PW_CIPHER, K_PW_IV, K_PW_KEY_VERSION, fromVersion, toVersion)
+        migrateSecret(context, K_PP_CIPHER, K_PP_IV, K_PP_KEY_VERSION, fromVersion, toVersion)
+    }
+
+    private fun migrateSecret(context: Context, kCipher: String, kIv: String, kVersion: String, fromVersion: Int, toVersion: Int) {
         val p = prefs(context)
-        if (p.getInt(K_PW_KEY_VERSION, LockerKeystoreHelper.KEY_VERSION_LEGACY) != fromVersion) return
-        val password = readPassword(context) ?: return
-        val (cipher, iv) = LockerKeystoreHelper.encryptString(password, toVersion)
+        if (p.getInt(kVersion, LockerKeystoreHelper.KEY_VERSION_LEGACY) != fromVersion) return
+        val value = readSecret(context, kCipher, kIv, kVersion) ?: return
+        val (cipher, iv) = LockerKeystoreHelper.encryptString(value, toVersion)
         p.edit {
-            putString(K_PW_CIPHER, cipher)
-            putString(K_PW_IV, iv)
-            putInt(K_PW_KEY_VERSION, toVersion)
+            putString(kCipher, cipher)
+            putString(kIv, iv)
+            putInt(kVersion, toVersion)
         }
     }
 
     /** The locker key was destroyed, so the stored password can't be decrypted any more. */
     fun onLockerKeyLost(context: Context) = prefs(context).edit {
         remove(K_PW_CIPHER); remove(K_PW_IV); remove(K_PW_KEY_VERSION)
+        remove(K_PP_CIPHER); remove(K_PP_IV); remove(K_PP_KEY_VERSION)
         putString(K_LAST_ERROR, "Set your backup password again in Settings.")
     }
 
@@ -169,7 +211,7 @@ object AutoBackupManager {
         val target = snapshotFile(context)
         val tmp = File(target.parentFile, "snapshot.kdbx.tmp")
         tmp.outputStream().use { out ->
-            KdbxBackupFormat.write(out, password, documents, deletions, exactPassword = true) { doc, att ->
+            KdbxBackupFormat.write(out, password, documents, deletions, BackupExtras.collect(context), exactPassword = true) { doc, att ->
                 if (doc.isPasswordProtected) repository.readStoredAttachmentBytes(att) else repository.readAttachmentBytes(att)
             }
         }
@@ -216,7 +258,7 @@ object AutoBackupManager {
                 ?: return@withContext fail(context, "Couldn't write to the backup folder.")
 
             val existing = dir.listFiles().mapNotNull { f -> f.name?.let { it to f } }.toMap()
-            for (old in filesToPrune(existing.keys, KEEP)) existing[old]?.delete()
+            for (old in filesToPrune(existing.keys, keepCount(context))) existing[old]?.delete()
 
             prefs(context).edit {
                 putLong(K_LAST_AT, System.currentTimeMillis())

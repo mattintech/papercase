@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
+import com.mattintech.papercase.locker.backup.AutoBackupManager
 
 /** "Stop reminders" on an expiry notification. Works without unlocking: it only touches the reminder list. */
 class StopReminderReceiver : BroadcastReceiver() {
@@ -14,6 +15,8 @@ class StopReminderReceiver : BroadcastReceiver() {
         Thread {
             try {
                 ReminderStore.stop(context, docId)
+                // Backups carry reminder status; refreshed at the next unlock
+                AutoBackupManager.onLockerChanged(context)
                 NotificationManagerCompat.from(context).cancel(docId.hashCode())
             } finally {
                 pending.finish()

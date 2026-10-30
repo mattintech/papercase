@@ -2,6 +2,7 @@ package com.mattintech.papercase.locker.transfer
 
 import android.content.Context
 import android.net.Uri
+import com.mattintech.papercase.locker.backup.BackupExtras
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
@@ -51,7 +52,11 @@ data class VaultConflictReport(
     /** Incoming documents this device already deleted; skipped unless replacing everything. */
     val previouslyDeletedDocuments: List<SecureDocument> = emptyList(),
     /** The other device's deletion records (doc id -> deletedAt). */
-    val incomingDeletions: Map<String, Long> = emptyMap()
+    val incomingDeletions: Map<String, Long> = emptyMap(),
+    /** Settings, passphrase and reminder status from a backup file. */
+    val extras: BackupExtras = BackupExtras(),
+    /** This phone's locker had no documents, so it's a restore onto a new phone. */
+    val localWasEmpty: Boolean = false
 ) {
     val hasConflicts: Boolean
         get() = conflictingDocuments.isNotEmpty()
@@ -92,7 +97,7 @@ object VaultExportImportManager {
         val exportFile = File(exportDir, "Papercase_Backup_$dateStr.kdbx")
         try {
             FileOutputStream(exportFile).use { out ->
-                KdbxBackupFormat.write(out, token, documents, deletions) { doc, att ->
+                KdbxBackupFormat.write(out, token, documents, deletions, BackupExtras.collect(context)) { doc, att ->
                     // Password-protected documents stay encrypted with their own key
                     if (doc.isPasswordProtected) repository.readStoredAttachmentBytes(att)
                     else repository.readAttachmentBytes(att)
@@ -247,6 +252,7 @@ object VaultExportImportManager {
         if (KdbxBackupFormat.isKdbx(fileBytes)) {
             val contents = KdbxBackupFormat.read(ByteArrayInputStream(fileBytes), token)
             return@withContext analyzeIncoming(repository, contents.documents, contents.files, contents.deletions)
+                .copy(extras = contents.extras)
         }
 
         // Legacy .spvault backups written by earlier versions
@@ -373,7 +379,8 @@ object VaultExportImportManager {
             fileMap = fileMap,
             deletedDocuments = deletedDocs,
             previouslyDeletedDocuments = previouslyDeleted,
-            incomingDeletions = incomingDeletions
+            incomingDeletions = incomingDeletions,
+            localWasEmpty = localDocuments.isEmpty()
         )
     }
 

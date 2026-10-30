@@ -2,6 +2,7 @@ package com.mattintech.papercase.locker.reminders
 
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -49,7 +50,29 @@ data class ReminderEntry(
     val notifiedEarly: Boolean = false,
     val lastExpiredNotice: String? = null,
     val stopped: Boolean = false,
-)
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("docId", docId)
+        put("title", title)
+        put("expiresOn", expiresOn)
+        put("remindOn", remindOn)
+        put("notifiedEarly", notifiedEarly)
+        lastExpiredNotice?.let { put("lastExpiredNotice", it) }
+        put("stopped", stopped)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject) = ReminderEntry(
+            docId = o.getString("docId"),
+            title = o.optString("title"),
+            expiresOn = o.getString("expiresOn"),
+            remindOn = o.getString("remindOn"),
+            notifiedEarly = o.optBoolean("notifiedEarly"),
+            lastExpiredNotice = o.optString("lastExpiredNotice").ifEmpty { null },
+            stopped = o.optBoolean("stopped"),
+        )
+    }
+}
 
 object ExpiryDates {
 
