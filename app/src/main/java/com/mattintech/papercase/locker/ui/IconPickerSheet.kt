@@ -14,15 +14,18 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
 import com.mattintech.papercase.locker.model.DocumentIcons
-import com.mattintech.papercase.locker.model.DocumentType
 
-/** Bottom sheet for choosing a document's icon and its colour. */
+/**
+ * Bottom sheet for choosing an icon and its colour. A blank icon key means [defaultIcon] (the
+ * document type's icon, or the folder icon). [onChanged] runs on every tap; [onDone] once, on close.
+ */
 class IconPickerSheet(
     private val context: Context,
-    private val type: DocumentType,
+    private val defaultIcon: Int,
     private var iconKey: String,
     private var colourKey: String,
-    private val onChanged: (iconKey: String, colourKey: String) -> Unit
+    private val onDone: ((iconKey: String, colourKey: String) -> Unit)? = null,
+    private val onChanged: (iconKey: String, colourKey: String) -> Unit = { _, _ -> }
 ) {
     private val dialog = BottomSheetDialog(context)
     private val iconGrid = GridLayout(context).apply { columnCount = COLUMNS }
@@ -40,12 +43,13 @@ class IconPickerSheet(
         render()
         dialog.setContentView(NestedScrollView(context).apply { addView(content) })
         dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        dialog.setOnDismissListener { onDone?.invoke(iconKey, colourKey) }
         dialog.show()
     }
 
     private fun render() {
         // Blank key = follow the document type; show that as selected
-        val selectedIcon = DocumentIcons.iconRes(iconKey, type)
+        val selectedIcon = DocumentIcons.iconRes(iconKey, defaultIcon)
         iconGrid.removeAllViews()
         DocumentIcons.ICONS.forEach { icon ->
             iconGrid.addView(cell(selected = icon.res == selectedIcon, label = icon.label) { size ->

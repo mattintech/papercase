@@ -9,6 +9,9 @@ data class Folder(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val parentId: String = "",
+    /** Optional icon and colour ([DocumentIcons] keys); blank = the plain folder icon. */
+    val iconKey: String = "",
+    val iconColor: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -16,6 +19,8 @@ data class Folder(
         put("id", id)
         put("name", name)
         put("parentId", parentId)
+        put("iconKey", iconKey)
+        put("iconColor", iconColor)
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
     }
@@ -25,6 +30,8 @@ data class Folder(
             id = json.optString("id", UUID.randomUUID().toString()),
             name = json.optString("name", "Folder"),
             parentId = json.optString("parentId", ""),
+            iconKey = json.optString("iconKey", ""),
+            iconColor = json.optString("iconColor", ""),
             createdAt = json.optLong("createdAt", System.currentTimeMillis()),
             updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
         )
