@@ -61,9 +61,13 @@ class AddDocumentActivity : AppCompatActivity() {
         private const val MAX_PHOTO_EDGE = 3000
         const val EXTRA_DOCUMENT_ID = "extra_document_id"
 
-        fun start(context: Context, documentId: String? = null) {
+        const val EXTRA_FOLDER_ID = "extra_folder_id"
+
+        /** [folderId]: where a new document goes (the folder the user is in). */
+        fun start(context: Context, documentId: String? = null, folderId: String = "") {
             val intent = Intent(context, AddDocumentActivity::class.java).apply {
                 putExtra(EXTRA_DOCUMENT_ID, documentId)
+                putExtra(EXTRA_FOLDER_ID, folderId)
             }
             context.startActivity(intent)
         }
@@ -1047,7 +1051,8 @@ class AddDocumentActivity : AppCompatActivity() {
                     dekIvBase64 = dekIvBase64,
                     reminderDays = reminderDays,
                     iconKey = iconKey,
-                    iconColor = iconColor
+                    iconColor = iconColor,
+                    folderId = intent.getStringExtra(EXTRA_FOLDER_ID).orEmpty()
                 )
 
                 val success = repository.saveDocument(docToSave)

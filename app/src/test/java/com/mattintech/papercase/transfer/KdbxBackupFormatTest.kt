@@ -4,6 +4,7 @@ import com.mattintech.papercase.locker.backup.BackupExtras
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentType
+import com.mattintech.papercase.locker.model.Folder
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.reminders.ReminderEntry
 import com.mattintech.papercase.locker.transfer.KdbxBackupFormat
@@ -151,6 +152,23 @@ class KdbxBackupFormatTest {
         assertEquals("correct horse battery staple", contents.extras.passphrase)
         assertEquals(2, contents.extras.settings!!.getInt("locker_timeout_minutes"))
         assertEquals(listOf(reminder), contents.extras.reminders)
+    }
+
+    @Test
+    fun foldersBecomeNestedGroups() {
+        val kids = Folder(name = "Kids", createdAt = 1_700_000_000_000, updatedAt = 1_760_000_000_123)
+        val jane = Folder(name = "Jane", parentId = kids.id, createdAt = 1_700_000_000_000, updatedAt = 1_760_000_000_456)
+        val out = ByteArrayOutputStream()
+        runBlocking {
+            KdbxBackupFormat.write(
+                out, token, listOf(passport.copy(folderId = jane.id), protectedDoc), emptyMap(), folders = listOf(kids, jane)
+            ) { _, att -> bytes.getValue(att.id) }
+        }
+        val contents = KdbxBackupFormat.read(ByteArrayInputStream(out.toByteArray()), token)
+
+        assertEquals(setOf(kids, jane), contents.folders.toSet())
+        assertEquals(jane.id, contents.documents.first { it.id == passport.id }.folderId)
+        assertEquals("", contents.documents.first { it.id == protectedDoc.id }.folderId)
     }
 
     @Test

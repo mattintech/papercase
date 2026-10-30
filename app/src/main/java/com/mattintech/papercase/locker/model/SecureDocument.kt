@@ -111,6 +111,8 @@ data class SecureDocument(
     val iconKey: String = "",
     /** Chosen icon colour ([DocumentIcons] colour key); blank = the app's accent colour. */
     val iconColor: String = "",
+    /** [Folder] id; blank = top level of the locker. */
+    val folderId: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -173,6 +175,7 @@ data class SecureDocument(
             put("reminderDays", reminderDays)
             put("iconKey", iconKey)
             put("iconColor", iconColor)
+            put("folderId", folderId)
             put("createdAt", createdAt)
             put("updatedAt", updatedAt)
 
@@ -211,6 +214,7 @@ data class SecureDocument(
                 reminderDays = json.optInt("reminderDays", 0),
                 iconKey = json.optString("iconKey", ""),
                 iconColor = json.optString("iconColor", ""),
+                folderId = json.optString("folderId", ""),
                 createdAt = json.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
             )

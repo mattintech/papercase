@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.mattintech.papercase.locker.backup.BackupExtras
 import com.mattintech.papercase.locker.model.DocumentAttachment
+import com.mattintech.papercase.locker.model.Folder
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +57,8 @@ data class VaultConflictReport(
     /** Settings, passphrase and reminder status from a backup file. */
     val extras: BackupExtras = BackupExtras(),
     /** This phone's locker had no documents, so it's a restore onto a new phone. */
-    val localWasEmpty: Boolean = false
+    val localWasEmpty: Boolean = false,
+    val incomingFolders: List<Folder> = emptyList()
 ) {
     val hasConflicts: Boolean
         get() = conflictingDocuments.isNotEmpty()
@@ -97,7 +99,7 @@ object VaultExportImportManager {
         val exportFile = File(exportDir, "Papercase_Backup_$dateStr.kdbx")
         try {
             FileOutputStream(exportFile).use { out ->
-                KdbxBackupFormat.write(out, token, documents, deletions, BackupExtras.collect(context)) { doc, att ->
+                KdbxBackupFormat.write(out, token, documents, deletions, BackupExtras.collect(context), repository.getFolders()) { doc, att ->
                     // Password-protected documents stay encrypted with their own key
                     if (doc.isPasswordProtected) repository.readStoredAttachmentBytes(att)
                     else repository.readAttachmentBytes(att)
@@ -143,6 +145,7 @@ object VaultExportImportManager {
                 put("documentCount", documents.size)
                 put("documents", docArray)
                 put("deleted", SecureLockerRepository.deletionsToJson(deletions))
+                put("folders", Folder.listToJson(repository.getFolders()))
             }
 
             zipOut.putNextEntry(ZipEntry("manifest.json"))
@@ -252,7 +255,7 @@ object VaultExportImportManager {
         if (KdbxBackupFormat.isKdbx(fileBytes)) {
             val contents = KdbxBackupFormat.read(ByteArrayInputStream(fileBytes), token)
             return@withContext analyzeIncoming(repository, contents.documents, contents.files, contents.deletions)
-                .copy(extras = contents.extras)
+                .copy(extras = contents.extras, incomingFolders = contents.folders)
         }
 
         // Legacy .spvault backups written by earlier versions
@@ -332,6 +335,7 @@ object VaultExportImportManager {
 
         val incomingDeletions = SecureLockerRepository.deletionsFromJson(manifestJson.optJSONArray("deleted"))
         return analyzeIncoming(repository, incomingDocuments, fileMap, incomingDeletions)
+            .copy(incomingFolders = Folder.listFromJson(manifestJson.optJSONArray("folders")))
     }
 
     private suspend fun analyzeIncoming(
@@ -397,6 +401,7 @@ object VaultExportImportManager {
         when (strategy) {
             ConflictResolutionStrategy.REPLACE_ALL -> {
                 repository.clearAll()
+                repository.mergeFolders(report.incomingFolders, report.incomingDeletions, replace = true)
 
                 val allIncoming = report.newDocuments + report.identicalDocuments +
                     report.conflictingDocuments.map { it.incoming } + report.previouslyDeletedDocuments
@@ -409,6 +414,7 @@ object VaultExportImportManager {
             }
 
             ConflictResolutionStrategy.SMART_MERGE -> {
+                repository.mergeFolders(report.incomingFolders, report.incomingDeletions)
                 // 1. Add all new documents
                 for (doc in report.newDocuments) {
                     val savedDoc = saveDocWithAttachments(repository, doc, report.fileMap)
@@ -438,6 +444,7 @@ object VaultExportImportManager {
             }
 
             ConflictResolutionStrategy.KEEP_BOTH -> {
+                repository.mergeFolders(report.incomingFolders, report.incomingDeletions)
                 // 1. Add all new documents
                 for (doc in report.newDocuments) {
                     val savedDoc = saveDocWithAttachments(repository, doc, report.fileMap)

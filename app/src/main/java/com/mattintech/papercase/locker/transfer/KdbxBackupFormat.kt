@@ -25,6 +25,8 @@ import com.mattintech.papercase.locker.backup.BackupExtras
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentType
+import com.mattintech.papercase.locker.model.Folder
+import com.mattintech.papercase.locker.model.FolderTree
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.reminders.ReminderEntry
 import okio.ByteString.Companion.toByteString
@@ -51,9 +53,10 @@ internal object KdbxBackupFormat {
         val documents: List<SecureDocument>,
         /** Attachment id -> bytes (ciphertext for password-protected documents). */
         val files: Map<String, ByteArray>,
-        /** Document id -> deletedAt (ms). */
+        /** Document or folder id -> deletedAt (ms). */
         val deletions: Map<String, Long>,
-        val extras: BackupExtras
+        val extras: BackupExtras,
+        val folders: List<Folder> = emptyList()
     )
 
     /** Attachment bytes as stored in the backup for [doc]. */
@@ -67,6 +70,7 @@ internal object KdbxBackupFormat {
     private const val LEGACY_KEY_DOCUMENT = "SecurePass.Document"
     private const val LEGACY_KEY_UPDATED_AT = "SecurePass.UpdatedAt"
     private const val KEY_SETTINGS = "Papercase.Settings"
+    private const val KEY_FOLDER = "Papercase.Folder"
     private const val KEY_REMINDER = "Papercase.Reminder"
     // Marks the entry holding the master passphrase (not a document)
     private const val KEY_PASSPHRASE = "Papercase.Passphrase"
@@ -100,13 +104,14 @@ internal object KdbxBackupFormat {
         documents: List<SecureDocument>,
         deletions: Map<String, Long>,
         extras: BackupExtras = BackupExtras(),
+        folders: List<Folder> = emptyList(),
         exactPassword: Boolean = false,
         attachments: AttachmentSource
     ) {
         val random = SecureRandom()
         val binaries = linkedMapOf<okio.ByteString, BinaryData>()
         val reminders = extras.reminders.associateBy { it.docId }
-        val entries = documents.map { doc ->
+        val docEntries = documents.map { doc ->
             val usedNames = mutableSetOf<String>()
             val refs = mutableListOf<BinaryReference>()
             val attachmentMeta = mutableListOf<DocumentAttachment>()
@@ -123,8 +128,28 @@ internal object KdbxBackupFormat {
                 // encryptedFileName is device-local; reuse it to remember the attachment's name in the backup
                 attachmentMeta.add(att.copy(encryptedFileName = name))
             }
-            toEntry(doc.copy(attachments = attachmentMeta), refs, reminders[doc.id])
-        } + listOfNotNull(extras.passphrase?.let(::passphraseEntry))
+            doc to toEntry(doc.copy(attachments = attachmentMeta), refs, reminders[doc.id])
+        }
+
+        // Folders become KeePass groups, so Kids > Jane shows up as nested groups in KeePassXC
+        val byFolder = docEntries.groupBy({ FolderTree.resolve(folders, it.first.folderId) }, { it.second })
+        fun groupFor(folder: Folder): Group = Group(
+            uuid = parseUuid(folder.id) ?: UUID.nameUUIDFromBytes(folder.id.toByteArray()),
+            name = folder.name,
+            icon = PredefinedIcon.Folder,
+            times = TimeData(
+                creationTime = Instant.ofEpochMilli(folder.createdAt),
+                lastAccessTime = Instant.ofEpochMilli(folder.updatedAt),
+                lastModificationTime = Instant.ofEpochMilli(folder.updatedAt),
+                locationChanged = Instant.ofEpochMilli(folder.updatedAt),
+                expiryTime = null
+            ),
+            groups = FolderTree.children(folders, folder.id).map(::groupFor),
+            entries = byFolder[folder.id].orEmpty(),
+            customData = mapOf(KEY_FOLDER to CustomDataValue(folder.toJson().toString()))
+        )
+        val entries = byFolder[""].orEmpty() + listOfNotNull(extras.passphrase?.let(::passphraseEntry))
+        val topGroups = FolderTree.children(folders, "").map(::groupFor)
 
         val database = KeePassDatabase.Ver4x.create(
             rootName = "Papercase",
@@ -151,7 +176,7 @@ internal object KdbxBackupFormat {
                     )
                 ),
                 content = db.content.copy(
-                    group = db.content.group.copy(entries = entries),
+                    group = db.content.group.copy(entries = entries, groups = topGroups),
                     deletedObjects = deletions.mapNotNull { (id, at) ->
                         parseUuid(id)?.let { DeletedObject(it, Instant.ofEpochMilli(at)) }
                     }
@@ -190,12 +215,13 @@ internal object KdbxBackupFormat {
         var passphrase: String? = null
         val reminders = mutableListOf<ReminderEntry>()
 
-        for (entry in allEntries(database.content.group, if (meta.recycleBinEnabled) meta.recycleBinUuid else null)) {
+        val folders = mutableListOf<Folder>()
+        for ((entry, folderId) in allEntries(database.content.group, if (meta.recycleBinEnabled) meta.recycleBinUuid else null, folders)) {
             if (entry.customData.containsKey(KEY_PASSPHRASE)) {
                 passphrase = entry.fields[BasicField.Password()]?.content?.takeIf { it.isNotEmpty() }
                 continue
             }
-            val doc = fromEntry(entry)
+            val doc = fromEntry(entry).copy(folderId = folderId)
             entry.customData[KEY_REMINDER]?.value?.let { json ->
                 runCatching { ReminderEntry.fromJson(JSONObject(json)) }.getOrNull()
                     ?.let { reminders.add(it.copy(docId = doc.id)) }
@@ -225,7 +251,7 @@ internal object KdbxBackupFormat {
             obj.id.toString() to (obj.deletionTime.epochSecond * 1000 + 999)
         }
         val settings = meta.customData[KEY_SETTINGS]?.value?.let { runCatching { JSONObject(it) }.getOrNull() }
-        return Contents(documents, files, deletions, BackupExtras(settings, passphrase, reminders))
+        return Contents(documents, files, deletions, BackupExtras(settings, passphrase, reminders), folders)
     }
 
     /** Shown as a normal password entry in KeePass apps. */
@@ -316,14 +342,33 @@ internal object KdbxBackupFormat {
         )
     }
 
-    private fun allEntries(root: Group, skipGroup: UUID?): List<Entry> {
-        val result = mutableListOf<Entry>()
-        val stack = ArrayDeque(listOf(root))
+    /**
+     * Every entry with the folder it's in (blank = top level). Each group below the root becomes a
+     * folder in [folders]; groups made in another KeePass app work the same way.
+     */
+    private fun allEntries(root: Group, skipGroup: UUID?, folders: MutableList<Folder>): List<Pair<Entry, String>> {
+        val result = mutableListOf<Pair<Entry, String>>()
+        val stack = ArrayDeque(listOf(root to ""))
         while (stack.isNotEmpty()) {
-            val group = stack.removeLast()
+            val (group, folderId) = stack.removeLast()
             if (group.uuid == skipGroup) continue
-            result.addAll(group.entries)
-            stack.addAll(group.groups)
+            group.entries.forEach { result.add(it to folderId) }
+            for (child in group.groups) {
+                if (child.uuid == skipGroup) continue
+                val stored = child.customData[KEY_FOLDER]?.value?.let { runCatching { Folder.fromJson(JSONObject(it)) }.getOrNull() }
+                val modified = child.times?.lastModificationTime?.toEpochMilli()
+                val folder = Folder(
+                    id = child.uuid.toString(),
+                    name = child.name.ifBlank { "Folder" },
+                    parentId = folderId,
+                    createdAt = stored?.createdAt ?: child.times?.creationTime?.toEpochMilli() ?: System.currentTimeMillis(),
+                    // Exact time unless the group was changed in another app since
+                    updatedAt = stored?.updatedAt?.takeIf { modified == null || it / 1000 == modified / 1000 }
+                        ?: modified ?: System.currentTimeMillis()
+                )
+                folders.add(folder)
+                stack.add(child to folder.id)
+            }
         }
         return result
     }
