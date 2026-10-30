@@ -21,7 +21,9 @@ Builds:
     gradle:
       - yes
 
+# F-Droid reads versionName and versionCode from app/build.gradle.kts at each tag.
+# Only plain vMAJOR.MINOR.PATCH tags are picked up; pre-release tags are skipped.
 AutoUpdateMode: Version
-UpdateCheckMode: Tags
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
 CurrentVersion: 1.0.0
 CurrentVersionCode: 2
