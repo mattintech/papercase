@@ -1,0 +1,224 @@
+name: Release
+
+# Push a tag like v1.2.0 on main to build a signed release, attach the APK to a
+# GitHub Release, and upload the app bundle to Google Play.
+#   versionName = the tag without the leading "v"
+#   versionCode = highest versionCode on any Google Play track + 1
+# Run it manually (Actions > Release > Run workflow) to print the next versionCode
+# from Google Play, or tick "internal test" to build the chosen branch and upload
+# it to Google Play's internal testing track (no tag, no GitHub release).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      internal_test:
+        description: Build this branch and upload it to Google Play's internal testing track
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# One release at a time, so two tags can't be given the same versionCode
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.name.outputs.name }}
+      code: ${{ steps.code.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check tag
+        if: github.event_name == 'push'
+        run: |
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not in the form vMAJOR.MINOR.PATCH (optionally with a suffix like -beta.1)"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$(git rev-parse "$GITHUB_REF^{commit}")" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on main. Merge to main first, then tag the merge commit."
+            exit 1
+          fi
+
+      - name: Version name
+        id: name
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "name=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.internal_test }}" = true ]; then
+            # e.g. 1.0.0-internal.12+ab12cd3: the build file's version, run number and commit
+            BASE=$(sed -nE 's/^ *versionName = "(.+)"$/\1/p' app/build.gradle.kts)
+            echo "name=$BASE-internal.$GITHUB_RUN_NUMBER+$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=(set from the tag when releasing)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+
+      - name: Next versionCode from Google Play
+        id: code
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: |
+          # Used only while nothing has been uploaded to Play yet
+          FALLBACK=$(sed -nE 's/^ *versionCode = ([0-9]+)$/\1/p' app/build.gradle.kts)
+          bundle exec fastlane android next_version_code fallback:"$FALLBACK" output:"$RUNNER_TEMP/version_code"
+          echo "code=$(cat "$RUNNER_TEMP/version_code")" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          NAME: ${{ steps.name.outputs.name }}
+          CODE: ${{ steps.code.outputs.code }}
+        run: |
+          printf 'versionName: %s\n\nversionCode: %s\n' "$NAME" "$CODE" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: version
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      VERSION_CODE: ${{ needs.version.outputs.code }}
+      PAPERCASE_KEYSTORE_FILE: ${{ github.workspace }}/upload-keystore.jks
+      PAPERCASE_KEYSTORE_PASSWORD: ${{ secrets.PAPERCASE_KEYSTORE_PASSWORD }}
+      PAPERCASE_KEY_ALIAS: ${{ secrets.PAPERCASE_KEY_ALIAS }}
+      PAPERCASE_KEY_PASSWORD: ${{ secrets.PAPERCASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Release notes
+        run: |
+          # Notes come from changelogs/<versionCode>.txt for the versionCode in app/build.gradle.kts
+          # (the same file F-Droid shows), as long as versionName there matches the tag.
+          # Otherwise changelogs/default.txt, otherwise a generic line.
+          DIR=fastlane/metadata/android/en-US/changelogs
+          FILE_NAME=$(sed -nE 's/^ *versionName = "(.+)"$/\1/p' app/build.gradle.kts)
+          FILE_CODE=$(sed -nE 's/^ *versionCode = ([0-9]+)$/\1/p' app/build.gradle.kts)
+          if [ "$FILE_NAME" != "$VERSION_NAME" ] && [[ "$VERSION_NAME" != *-* ]]; then
+            echo "::warning::versionName in app/build.gradle.kts is $FILE_NAME, not $VERSION_NAME. F-Droid only picks up a release when versionName and versionCode there are bumped (see fdroid/README.md)."
+          fi
+          mkdir -p whatsnew
+          if [ "$FILE_NAME" = "$VERSION_NAME" ] && [ -f "$DIR/$FILE_CODE.txt" ]; then
+            NOTES="$DIR/$FILE_CODE.txt"
+          elif [ -f "$DIR/default.txt" ]; then
+            NOTES="$DIR/default.txt"
+          else
+            NOTES=$(mktemp)
+            echo "Bug fixes and improvements." > "$NOTES"
+          fi
+          echo "Release notes from $NOTES"
+          cp "$NOTES" whatsnew/whatsnew-en-US
+          # Google Play rejects release notes over 500 characters
+          CHARS=$(LC_ALL=C.UTF-8 wc -m < whatsnew/whatsnew-en-US)
+          if [ "$CHARS" -gt 500 ]; then
+            echo "::error::$NOTES is $CHARS characters; Google Play allows 500."
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore upload keystore
+        run: echo "${{ secrets.PAPERCASE_KEYSTORE_BASE64 }}" | base64 --decode > "$PAPERCASE_KEYSTORE_FILE"
+
+      - name: Test and build signed release
+        run: ./gradlew testPlayDebugUnitTest testFdroidDebugUnitTest bundlePlayRelease assembleFdroidRelease -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
+
+      - name: Prepare release files
+        run: |
+          mkdir -p dist
+          # The GitHub download is the F-Droid build: no Google libraries, works without Play services
+          cp app/build/outputs/apk/fdroid/release/app-fdroid-release.apk "dist/papercase-$GITHUB_REF_NAME.apk"
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/papercase-${{ github.ref_name }}.apk
+          body_path: whatsnew/whatsnew-en-US
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.mattintech.papercase
+          releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
+          mappingFile: app/build/outputs/mapping/playRelease/mapping.txt
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          # Apps that haven't been published yet only accept draft releases
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          whatsNewDirectory: whatsnew
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$PAPERCASE_KEYSTORE_FILE"
+
+  internal-test:
+    needs: version
+    if: github.event_name == 'workflow_dispatch' && inputs.internal_test
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      VERSION_CODE: ${{ needs.version.outputs.code }}
+      PAPERCASE_KEYSTORE_FILE: ${{ github.workspace }}/upload-keystore.jks
+      PAPERCASE_KEYSTORE_PASSWORD: ${{ secrets.PAPERCASE_KEYSTORE_PASSWORD }}
+      PAPERCASE_KEY_ALIAS: ${{ secrets.PAPERCASE_KEY_ALIAS }}
+      PAPERCASE_KEY_PASSWORD: ${{ secrets.PAPERCASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore upload keystore
+        run: echo "${{ secrets.PAPERCASE_KEYSTORE_BASE64 }}" | base64 --decode > "$PAPERCASE_KEYSTORE_FILE"
+
+      - name: Test and build signed bundle
+        run: ./gradlew testPlayDebugUnitTest bundlePlayRelease -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
+
+      - name: Release notes
+        run: |
+          mkdir -p whatsnew
+          echo "Internal test build from $GITHUB_REF_NAME ($(git rev-parse --short HEAD))." > whatsnew/whatsnew-en-US
+
+      - name: Upload to Google Play (internal testing)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.mattintech.papercase
+          releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
+          mappingFile: app/build/outputs/mapping/playRelease/mapping.txt
+          track: internal
+          # Goes straight to internal testers. Play only accepts this once the app's first
+          # release has been rolled out in Play Console; before that, uploads must be drafts.
+          status: completed
+          whatsNewDirectory: whatsnew
+
+      - name: Summary
+        run: |
+          printf 'Uploaded %s (%s) to the internal testing track.\n' "$VERSION_NAME" "$VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$PAPERCASE_KEYSTORE_FILE"

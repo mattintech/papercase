@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -25,6 +26,7 @@ import com.google.android.material.datepicker.MaterialDatePicker
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
+import com.mattintech.papercase.data.PreferencesManager
 import com.mattintech.papercase.databinding.ActivityAddDocumentBinding
 import com.mattintech.papercase.databinding.ItemAttachmentChipBinding
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
@@ -33,20 +35,27 @@ import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentType
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ExpiryDates
+import com.mattintech.papercase.locker.reminders.ReminderOptions
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.mattintech.papercase.locker.ui.crop.CropActivity
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import javax.crypto.SecretKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AddDocumentActivity : AppCompatActivity() {
 
     companion object {
+        /** Longest edge for photos shown in the crop screen (keeps memory use reasonable). */
+        private const val MAX_PHOTO_EDGE = 3000
         const val EXTRA_DOCUMENT_ID = "extra_document_id"
 
         fun start(context: Context, documentId: String? = null) {
@@ -89,6 +98,11 @@ class AddDocumentActivity : AppCompatActivity() {
     private lateinit var repository: SecureLockerRepository
 
     private var editingDocumentId: String? = null
+    private lateinit var prefs: PreferencesManager
+
+    /** Days before expiry to remind; follows the document type until the user picks one. */
+    private var reminderDays = 0
+    private var reminderChosen = false
     private var existingDocument: SecureDocument? = null
 
     // Attachment Slots
@@ -104,12 +118,26 @@ class AddDocumentActivity : AppCompatActivity() {
     private var tempPhotoUri: Uri? = null
     private var tempPhotoFile: File? = null
 
-    // Gallery picker
+    // Gallery picker: photos go through the crop screen
     private val pickImageLauncher =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             SessionManager.isExternalOperationActive = false
             SessionManager.keepAlive()
-            if (uri != null) handleSelectedUri(uri)
+            if (uri != null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val bytes = runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                    withContext(Dispatchers.Main) {
+                        if (bytes != null) openCrop(bytes) else handleSelectedUri(uri)
+                    }
+                }
+            }
+        }
+
+    // Crop screen: trims a photo to just the document
+    private val cropLauncher =
+        registerForActivityResult(CropActivity.Contract()) { bitmap ->
+            SessionManager.keepAlive()
+            if (bitmap != null) addPhotoBitmap(bitmap)
         }
 
     // PDF / generic file picker
@@ -118,6 +146,14 @@ class AddDocumentActivity : AppCompatActivity() {
             SessionManager.isExternalOperationActive = false
             SessionManager.keepAlive()
             if (uri != null) handleSelectedUri(uri)
+        }
+
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                Toast.makeText(this, "Notifications are off, so reminders can't be shown. You can allow them in system settings.", Toast.LENGTH_LONG).show()
+            }
+            validateAndSave()
         }
 
     // Camera launcher
@@ -141,30 +177,58 @@ class AddDocumentActivity : AppCompatActivity() {
                 photoFile.delete()
                 return@registerForActivityResult
             }
-            val slot = activeCaptureSlot
-            val title = activeVisaTitle
             lifecycleScope.launch(Dispatchers.IO) {
-                // Strip GPS & other EXIF metadata; decoding a full-size photo is too slow for the main thread
-                val clean = try {
-                    ImageMetadataStripper.strip(
-                        photoFile.readBytes(), "image/jpeg", "Photo_${System.currentTimeMillis()}.jpg"
-                    )
+                val bytes = try {
+                    photoFile.readBytes()
                 } finally {
                     photoFile.delete()
                 }
-                withContext(Dispatchers.Main) {
-                    addAttachmentItem(
-                        AttachmentItem.Pending(
-                            slot = slot,
-                            customTitle = title,
-                            fileName = clean.fileName,
-                            mimeType = clean.mimeType,
-                            bytes = clean.bytes
-                        )
-                    )
+                withContext(Dispatchers.Main) { openCrop(bytes) }
+            }
+        }
+
+    /** Decodes a photo (upright, at a manageable size) and opens the crop screen. */
+    private fun openCrop(bytes: ByteArray) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val bitmap = OrientedBitmap.decode(bytes)?.let(::limitSize)
+            withContext(Dispatchers.Main) {
+                if (bitmap != null) {
+                    cropLauncher.launch(bitmap)
+                } else {
+                    Toast.makeText(this@AddDocumentActivity, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
                 }
             }
         }
+    }
+
+    private fun limitSize(b: Bitmap): Bitmap {
+        val longest = maxOf(b.width, b.height)
+        if (longest <= MAX_PHOTO_EDGE) return b
+        val f = MAX_PHOTO_EDGE.toFloat() / longest
+        return Bitmap.createScaledBitmap(b, (b.width * f).toInt(), (b.height * f).toInt(), true).also { if (it !== b) b.recycle() }
+    }
+
+    /** Adds a cropped photo. Re-encoding from pixels means no metadata (GPS, camera details) survives. */
+    private fun addPhotoBitmap(bitmap: Bitmap) {
+        val slot = activeCaptureSlot
+        val title = activeVisaTitle
+        lifecycleScope.launch(Dispatchers.IO) {
+            val out = java.io.ByteArrayOutputStream()
+            val photo = ImageMetadataStripper.shrink(bitmap)
+            photo.compress(Bitmap.CompressFormat.JPEG, ImageMetadataStripper.JPEG_QUALITY, out)
+            withContext(Dispatchers.Main) {
+                addAttachmentItem(
+                    AttachmentItem.Pending(
+                        slot = slot,
+                        customTitle = title,
+                        fileName = "Photo_${System.currentTimeMillis()}.jpg",
+                        mimeType = "image/jpeg",
+                        bytes = out.toByteArray()
+                    )
+                )
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -180,6 +244,7 @@ class AddDocumentActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         repository = SecureLockerRepository(this)
+        prefs = PreferencesManager(this)
         editingDocumentId = intent.getStringExtra(EXTRA_DOCUMENT_ID)
 
         setupWindowInsets()
@@ -227,6 +292,7 @@ class AddDocumentActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
 
         // Date picker for expiry date
+        setupReminderField()
         binding.etExpiry.setOnClickListener { showDatePicker() }
         binding.tilExpiry.setEndIconOnClickListener { showDatePicker() }
 
@@ -286,11 +352,77 @@ class AddDocumentActivity : AppCompatActivity() {
 
         // Save Document button
         binding.btnSaveDocument.setOnClickListener {
-            validateAndSave()
+            if (shouldAskAboutReminders()) askAboutReminders() else validateAndSave()
         }
     }
 
+    private fun setupReminderField() {
+        val labels = ReminderOptions.ALL.map { it.label }
+        binding.actvReminder.setSimpleItems(labels.toTypedArray())
+        binding.actvReminder.setOnItemClickListener { _, _, position, _ ->
+            reminderDays = ReminderOptions.ALL[position].days
+            reminderChosen = true
+            updateReminderHelper()
+        }
+        setReminder(ReminderOptions.defaultFor(getSelectedDocumentType()))
+    }
+
+    private fun setReminder(days: Int) {
+        reminderDays = days
+        binding.actvReminder.setText(ReminderOptions.label(days), false)
+        updateReminderHelper()
+    }
+
+    private fun updateReminderHelper() {
+        val expiry = ExpiryDates.parse(binding.etExpiry.text?.toString().orEmpty())
+        binding.tilReminder.helperText = when {
+            reminderDays == 0 -> null
+            expiry == null -> "Add an expiration date to get a reminder"
+            else -> {
+                val on = expiry.minusDays(reminderDays.toLong())
+                    .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+                if (prefs.isExpiryRemindersEnabled) "You'll be reminded on $on" else "Reminder on $on (reminders are off in Settings)"
+            }
+        }
+    }
+
+    /** Ask once, the first time someone saves a document with a reminder. */
+    private fun shouldAskAboutReminders(): Boolean =
+        reminderDays > 0 &&
+            ExpiryDates.parse(binding.etExpiry.text?.toString().orEmpty()) != null &&
+            !prefs.isExpiryRemindersEnabled &&
+            !prefs.hasAskedAboutExpiryReminders &&
+            binding.etTitle.text?.isNotBlank() == true
+
+    private fun askAboutReminders() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Get expiry reminders?")
+            .setMessage(
+                "Papercase can send you a notification before your documents expire, so you have time to renew them. " +
+                    "You choose how early on each document.\n\n" +
+                    "On the lock screen the notification only says that a document expires soon."
+            )
+            .setPositiveButton("Turn on") { _, _ ->
+                prefs.isExpiryRemindersEnabled = true
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    validateAndSave()
+                }
+            }
+            .setNegativeButton("Not now") { _, _ ->
+                prefs.hasAskedAboutExpiryReminders = true
+                validateAndSave()
+            }
+            .show()
+    }
+
     private fun updateDocumentTypeUI(type: DocumentType) {
+        if (!reminderChosen && editingDocumentId == null && ::prefs.isInitialized && binding.actvReminder.adapter != null) {
+            setReminder(ReminderOptions.defaultFor(type))
+        }
         if (type == DocumentType.PASSPORT) {
             binding.tvFrontHeader.text = "Photo & Details Page"
             binding.tvBackHeader.text = "Back Cover / Signature"
@@ -361,6 +493,8 @@ class AddDocumentActivity : AppCompatActivity() {
         binding.etTitle.setText(doc.title)
         binding.etNumber.setText(doc.documentNumber)
         binding.etExpiry.setText(doc.expirationDate)
+        reminderChosen = true
+        setReminder(doc.reminderDays)
         binding.actvCountry.setText(doc.issuingCountry, false)
         binding.etNotes.setText(doc.notes)
 
@@ -406,14 +540,23 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun showDatePicker() {
+        // MaterialDatePicker works in UTC: the selection is midnight UTC of the picked day.
+        // Formatting it in local time would shift the date back a day west of UTC.
+        val utcFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val current = binding.etExpiry.text?.toString()?.trim().orEmpty()
+        val currentMs = runCatching { utcFormatter.parse(current)?.time }.getOrNull()
+
         val picker = MaterialDatePicker.Builder.datePicker()
             .setTitleText("Select Expiration Date")
+            .apply { if (currentMs != null) setSelection(currentMs) }
             .build()
 
         picker.addOnPositiveButtonClickListener { selectionMs ->
-            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val formattedDate = formatter.format(Date(selectionMs))
+            val formattedDate = utcFormatter.format(Date(selectionMs))
             binding.etExpiry.setText(formattedDate)
+            updateReminderHelper()
         }
 
         picker.show(supportFragmentManager, "EXPIRY_PICKER")
@@ -422,6 +565,7 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun captureFromCamera(slot: AttachmentSlot, visaTitle: String = "") {
         activeCaptureSlot = slot
         activeVisaTitle = visaTitle
+        // The photo then opens in the crop screen
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             launchCameraCapture()
         } else {
@@ -831,6 +975,7 @@ class AddDocumentActivity : AppCompatActivity() {
                     passwordSaltBase64 = passwordSaltBase64,
                     encryptedDekBase64 = encryptedDekBase64,
                     dekIvBase64 = dekIvBase64,
+                    reminderDays = reminderDays,
                     updatedAt = System.currentTimeMillis()
                 ) ?: SecureDocument(
                     title = title,
@@ -843,7 +988,8 @@ class AddDocumentActivity : AppCompatActivity() {
                     isPasswordProtected = isPasswordProtect,
                     passwordSaltBase64 = passwordSaltBase64,
                     encryptedDekBase64 = encryptedDekBase64,
-                    dekIvBase64 = dekIvBase64
+                    dekIvBase64 = dekIvBase64,
+                    reminderDays = reminderDays
                 )
 
                 val success = repository.saveDocument(docToSave)

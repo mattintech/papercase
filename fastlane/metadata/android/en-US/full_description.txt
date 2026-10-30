@@ -1,0 +1,34 @@
+Papercase keeps your important documents on your phone: passport, driver's licence, health and insurance cards, residence permits and PDFs. Everything is encrypted and locked behind your fingerprint or device PIN.
+
+No accounts, no servers, no tracking. Your documents never leave your devices unless you send them.
+
+<b>Locker</b>
+<ul>
+<li>Store documents with front and back photos, visas and extra pages.</li>
+<li>Encrypted with a key held in your phone's secure hardware. The locker opens only after you unlock with your fingerprint or PIN, and locks again when you leave.</li>
+<li>Give any document its own password for an extra layer.</li>
+<li>Location, timestamps and camera details are removed from photos when you add them.</li>
+<li>Copy a document number with one tap, and have the clipboard wiped automatically.</li>
+<li>Get reminded before documents expire. You choose how early for each one, and Papercase keeps reminding you after expiry until you update it.</li>
+</ul>
+
+<b>Move documents between your devices</b>
+<ul>
+<li>Show a QR code on one phone and scan it on the other. Documents are sent directly over your local Wi-Fi, encrypted with a key that only exists in the QR code.</li>
+<li>The sending phone shows which device is asking and must approve with fingerprint or PIN.</li>
+<li>New documents are added, edits keep the newest version, and deletions carry over.</li>
+</ul>
+
+<b>Back up to a file</b>
+<ul>
+<li>Export your locker as a standard KeePass (.kdbx) file protected with a one-time token.</li>
+<li>Backups also open in KeePassXC or KeePassDX, so your data is never locked into this app.</li>
+<li>Turn on automatic daily or weekly backups to a folder you choose, protected with your own backup password.</li>
+</ul>
+
+<b>Passphrase</b>
+<ul>
+<li>Optionally store a long master passphrase (for example for a password manager) under your fingerprint, and copy it with one tap from the app or a Quick Settings tile. The clipboard is cleared after a timeout you choose.</li>
+</ul>
+
+Papercase is free and open source software (GPL-3.0). Source code and issue tracker: https://github.com/mattintech/papercase

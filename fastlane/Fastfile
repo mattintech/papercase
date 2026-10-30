@@ -1,0 +1,24 @@
+default_platform(:android)
+
+platform :android do
+  desc "Print the next free versionCode on Google Play (highest code on any track + 1)"
+  desc "Needs the service account JSON in PLAY_SERVICE_ACCOUNT_JSON. Pass fallback:<code> for an app with no uploads yet"
+  lane :next_version_code do |options|
+    codes = %w[internal alpha beta production].flat_map do |track|
+      # Empty or missing tracks return no codes; other API errors fail the lane
+      google_play_track_version_codes(track: track, json_key_data: ENV.fetch("PLAY_SERVICE_ACCOUNT_JSON"))
+    end
+
+    next_code =
+      if codes.empty?
+        UI.important("No version codes on Google Play yet, using fallback #{options[:fallback]}")
+        options.fetch(:fallback).to_i
+      else
+        codes.max + 1
+      end
+
+    UI.success("Next versionCode: #{next_code}")
+    File.write(options[:output], "#{next_code}\n") if options[:output]
+    next_code
+  end
+end

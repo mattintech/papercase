@@ -8,13 +8,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import kotlin.coroutines.resume
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.provider.Settings
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -43,12 +43,15 @@ import com.mattintech.papercase.databinding.DialogSetPassphraseBinding
 import com.mattintech.papercase.databinding.DialogSyncConflictsBinding
 import com.mattintech.papercase.databinding.DialogVaultTransferBottomSheetBinding
 import com.mattintech.papercase.databinding.DialogViewPassphraseBinding
-import com.mattintech.papercase.locker.model.DocumentType
-import com.mattintech.papercase.locker.model.SecureDocument
-import com.mattintech.papercase.locker.repository.SecureLockerRepository
-import com.mattintech.papercase.locker.transfer.ConflictResolutionStrategy
+import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.crypto.LockerKeyInvalidatedException
 import com.mattintech.papercase.locker.crypto.LockerLockedException
+import com.mattintech.papercase.locker.model.DocumentType
+import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ReminderNotifier
+import com.mattintech.papercase.locker.reminders.ReminderStore
+import com.mattintech.papercase.locker.repository.SecureLockerRepository
+import com.mattintech.papercase.locker.transfer.ConflictResolutionStrategy
 import com.mattintech.papercase.locker.transfer.P2pNetworkHelper
 import com.mattintech.papercase.locker.transfer.P2pSessionKeys
 import com.mattintech.papercase.locker.transfer.P2pTransferClient
@@ -58,18 +61,24 @@ import com.mattintech.papercase.locker.transfer.VaultConflictReport
 import com.mattintech.papercase.locker.transfer.VaultExportImportManager
 import com.mattintech.papercase.locker.ui.AddDocumentActivity
 import com.mattintech.papercase.locker.ui.DocumentViewerActivity
+import com.mattintech.papercase.locker.ui.LockerSettingsActivity
 import com.mattintech.papercase.locker.ui.SecureDocumentsAdapter
+import com.mattintech.papercase.store.AppUpdatePrompt
+import java.io.File
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
         const val ACTION_TRIGGER_COPY = "com.mattintech.papercase.ACTION_TRIGGER_COPY"
+
+        /** Document to open once the locker is unlocked (e.g. from an expiry reminder). */
+        const val EXTRA_OPEN_DOCUMENT_ID = "com.mattintech.papercase.extra.OPEN_DOCUMENT_ID"
         private const val STATE_SELECTED_TAB = "selected_tab"
     }
 
@@ -85,6 +94,10 @@ class MainActivity : AppCompatActivity() {
             SessionManager.isLockerUnlocked = value
         }
     private var hasHandledAutoLaunch = false
+    private var pendingOpenDocumentId: String? = null
+
+    /** Google Play build: suggests updating when a new version is out. F-Droid build: does nothing. */
+    private lateinit var updatePrompt: AppUpdatePrompt
     private var activeTokenInput: android.widget.EditText? = null
     private var activeP2pServer: P2pTransferServer? = null
 
@@ -100,6 +113,16 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "Camera permission required to scan QR code", Toast.LENGTH_SHORT).show()
             }
+        }
+
+    // Action waiting on the local network permission prompt
+    private var pendingLocalNetworkAction: (() -> Unit)? = null
+
+    private val requestLocalNetworkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            val action = pendingLocalNetworkAction
+            pendingLocalNetworkAction = null
+            if (isGranted) action?.invoke() else showLocalNetworkPermissionRequired()
         }
 
     private val barcodeLauncher =
@@ -154,6 +177,7 @@ class MainActivity : AppCompatActivity() {
 
         prefs = PreferencesManager(this)
         lockerRepository = SecureLockerRepository(this)
+        updatePrompt = AppUpdatePrompt(this, binding.root, binding.bottomNavigation)
 
         setupWindowInsets()
         setupUI()
@@ -179,8 +203,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun selectInitialTab(savedInstanceState: Bundle?) {
         val tab = savedInstanceState?.getInt(STATE_SELECTED_TAB)?.takeIf { it != 0 } ?: run {
-            val wantsPassphrase = intent?.action == ACTION_TRIGGER_COPY ||
-                (prefs.hasStoredPassphrase && prefs.isAutoCopyEnabled)
+            val opensDocument = intent?.hasExtra(EXTRA_OPEN_DOCUMENT_ID) == true
+            val wantsPassphrase = !opensDocument && (intent?.action == ACTION_TRIGGER_COPY ||
+                (prefs.hasStoredPassphrase && prefs.isAutoCopyEnabled))
             if (wantsPassphrase) R.id.nav_passphrase else R.id.nav_locker
         }
         // Check the item directly so the selection listener (which prompts) doesn't fire
@@ -196,6 +221,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        updatePrompt.check()
         ClipboardSecurityManager.checkAndClearIfExpired(this)
         updateVaultStatusUI()
 
@@ -219,11 +245,25 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIncomingIntent()
+        handleIncomingIntent(appAlreadyOpen = true)
     }
 
-    private fun handleIncomingIntent() {
+    private fun handleIncomingIntent(appAlreadyOpen: Boolean = false) {
         val currentIntent = intent ?: return
+
+        // 0. Open a specific document (expiry reminder). Shown after unlocking, like any document.
+        currentIntent.getStringExtra(EXTRA_OPEN_DOCUMENT_ID)?.let { id ->
+            currentIntent.removeExtra(EXTRA_OPEN_DOCUMENT_ID)
+            pendingOpenDocumentId = id
+            if (isLockerUnlocked && binding.layoutLockerContent.visibility == View.VISIBLE) {
+                openPendingDocument()
+            } else if (appAlreadyOpen) {
+                binding.bottomNavigation.menu.findItem(R.id.nav_locker)?.isChecked = true
+                showLockerTab(promptIfLocked = true)
+            }
+            // On a fresh start the locker tab is already showing and asking to unlock
+            return
+        }
 
         // 1. Check Deep Link (e.g. from Samsung Camera, Google Lens, or browser)
         val uri = currentIntent.data
@@ -299,7 +339,7 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Receive documents?")
             .setMessage("Receive a vault from the device at ${target.ip}.\n\nOnly continue if you just scanned the QR code on your own device.")
-            .setPositiveButton("Continue") { _, _ -> startP2pReceiverFlow(target) }
+            .setPositiveButton("Continue") { _, _ -> withLocalNetworkAccess { startP2pReceiverFlow(target) } }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -546,15 +586,13 @@ class MainActivity : AppCompatActivity() {
         binding.nestedScrollView.visibility = View.VISIBLE
         binding.layoutSecureLocker.visibility = View.GONE
         binding.fabAddDocument.hide()
-        binding.ivToolbarLogo.setImageResource(R.drawable.ic_shield_check)
-        binding.tvToolbarTitle.text = getString(R.string.app_name)
+        binding.tvToolbarTitle.text = "Passphrase"
     }
 
     /** Shows the locker tab: the documents if unlocked, otherwise the locked screen. */
     private fun showLockerTab(promptIfLocked: Boolean) {
         binding.nestedScrollView.visibility = View.GONE
         binding.layoutSecureLocker.visibility = View.VISIBLE
-        binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
         binding.tvToolbarTitle.text = "Locker"
 
         if (isLockerUnlocked || SessionManager.isSessionValid(getSessionTimeoutMs())) {
@@ -575,19 +613,16 @@ class MainActivity : AppCompatActivity() {
         if (promptIfLocked) promptLockerUnlock()
     }
 
-    private val isLockerOpenOnScreen: Boolean
-        get() = binding.layoutSecureLocker.visibility == View.VISIBLE &&
-            binding.layoutLockerContent.visibility == View.VISIBLE
-
-    /** Gear menu: locker actions only while the locker is open, About always. */
+    /** Gear menu, the same on both tabs. Locker actions ask to unlock first if needed. */
     private fun showSettingsMenu(anchor: View) {
         val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
         popup.menuInflater.inflate(R.menu.menu_toolbar_settings, popup.menu)
-        popup.menu.findItem(R.id.action_transfer).isVisible = isLockerOpenOnScreen
-        popup.menu.findItem(R.id.action_lock).isVisible = isLockerOpenOnScreen
+        popup.setForceShowIcon(true)
+        popup.menu.findItem(R.id.action_lock).isEnabled = isLockerUnlocked
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                R.id.action_transfer -> showVaultTransferOptions()
+                R.id.action_transfer -> withLockerUnlocked("Unlock to transfer or back up") { showVaultTransferOptions() }
+                R.id.action_settings -> withLockerUnlocked("Unlock to change settings") { LockerSettingsActivity.start(this) }
                 R.id.action_lock -> {
                     SessionManager.lock()
                     lockLockerInPlace()
@@ -598,6 +633,17 @@ class MainActivity : AppCompatActivity() {
             true
         }
         popup.show()
+    }
+
+    private fun withLockerUnlocked(subtitle: String, action: () -> Unit) {
+        lifecycleScope.launch {
+            if (!awaitLockerUnlock(subtitle)) return@launch
+            if (!isLockerUnlocked) {
+                isLockerUnlocked = true
+                if (binding.layoutSecureLocker.visibility == View.VISIBLE) displayLockerTab()
+            }
+            action()
+        }
     }
 
     private fun showLockedLocker() {
@@ -636,9 +682,17 @@ class MainActivity : AppCompatActivity() {
         binding.layoutLockerLocked.visibility = View.GONE
         binding.layoutLockerContent.visibility = View.VISIBLE
         binding.fabAddDocument.show()
-        binding.ivToolbarLogo.setImageResource(R.drawable.ic_folder_lock)
         binding.tvToolbarTitle.text = "Locker"
         migrateLockerKeyIfNeeded()
+        // The locker key is usable right now: bring the automatic backup snapshot up to date
+        lifecycleScope.launch { AutoBackupManager.refreshIfNeeded(this@MainActivity) }
+        openPendingDocument()
+    }
+
+    private fun openPendingDocument() {
+        val id = pendingOpenDocumentId ?: return
+        pendingOpenDocumentId = null
+        DocumentViewerActivity.start(this, id)
     }
 
     /** Moves the locker onto the auth-bound key the first time it's opened on a device with a screen lock. */
@@ -867,6 +921,7 @@ class MainActivity : AppCompatActivity() {
                         isLockerUnlocked = true
                         val decryptedPassphrase =
                             KeystoreHelper.decryptWithCipher(authenticatedCipher, payload.ciphertext)
+                        keepPassphraseForBackups(decryptedPassphrase)
 
                         val timeout = if (prefs.isAutoClearEnabled) prefs.clearTimeoutSeconds else 0
                         ClipboardSecurityManager.copyToClipboard(
@@ -912,6 +967,7 @@ class MainActivity : AppCompatActivity() {
                     isLockerUnlocked = true
                     val decryptedPassphrase =
                         KeystoreHelper.decryptWithCipher(authenticatedCipher, payload.ciphertext)
+                    keepPassphraseForBackups(decryptedPassphrase)
                     showDecryptedPassphraseDialog(decryptedPassphrase)
                 },
                 onError = { _, errorMsg ->
@@ -965,6 +1021,7 @@ class MainActivity : AppCompatActivity() {
                         isLockerUnlocked = true
                         val payload = KeystoreHelper.encryptWithCipher(authenticatedCipher, passphrase)
                         prefs.saveEncryptedPassphrase(payload)
+                        keepPassphraseForBackups(passphrase)
                         updateVaultStatusUI()
                         Toast.makeText(this, "Passphrase securely stored in keystore!", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
@@ -977,6 +1034,14 @@ class MainActivity : AppCompatActivity() {
             )
         } catch (e: Exception) {
             Toast.makeText(this, "Error initializing encryption key: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Backups include the passphrase; this keeps a copy they can read (see AutoBackupManager). */
+    private fun keepPassphraseForBackups(passphrase: String) {
+        lifecycleScope.launch {
+            // Needs the locker key; if it isn't usable right now, the next unlock and copy tries again
+            runCatching { AutoBackupManager.rememberPassphrase(this@MainActivity, passphrase) }
         }
     }
 
@@ -1002,6 +1067,7 @@ class MainActivity : AppCompatActivity() {
             .setMessage("This will erase the stored passphrase and destroy the hardware encryption key from Android Keystore. This cannot be undone.")
             .setPositiveButton("Remove") { _, _ ->
                 prefs.clearStoredPassphrase()
+                AutoBackupManager.forgetPassphrase(this)
                 ClipboardSecurityManager.clearClipboard(this)
                 updateVaultStatusUI()
                 Toast.makeText(this, "Passphrase deleted", Toast.LENGTH_SHORT).show()
@@ -1047,9 +1113,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAboutDialog() {
         val aboutView = layoutInflater.inflate(R.layout.dialog_about, null)
+        aboutView.findViewById<TextView>(R.id.tvAboutVersion).text = "Version ${BuildConfig.VERSION_NAME}"
         MaterialAlertDialogBuilder(this)
             .setView(aboutView)
-            .setPositiveButton("Got It", null)
+            .setPositiveButton("Learn more on GitHub") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mattintech/papercase")))
+            }
+            .setNegativeButton("Close", null)
             .show()
     }
 
@@ -1061,7 +1131,7 @@ class MainActivity : AppCompatActivity() {
 
         sheetBinding.cardSendP2p.setOnClickListener {
             bottomSheet.dismiss()
-            startP2pSendFlow()
+            withLocalNetworkAccess { startP2pSendFlow() }
         }
 
         sheetBinding.cardReceiveP2p.setOnClickListener {
@@ -1085,6 +1155,35 @@ class MainActivity : AppCompatActivity() {
     // ==========================================
     // P2P LOCAL WI-FI SENDER FLOW
     // ==========================================
+
+    /**
+     * Android 17 blocks local network sockets (both connecting and accepting) for apps targeting
+     * API 37 until ACCESS_LOCAL_NETWORK is granted. Older versions allow it with INTERNET.
+     */
+    private fun withLocalNetworkAccess(action: () -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.CINNAMON_BUN ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            action()
+            return
+        }
+        pendingLocalNetworkAction = action
+        requestLocalNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+    }
+
+    private fun showLocalNetworkPermissionRequired() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Nearby devices permission needed")
+            .setMessage("Wi-Fi transfer connects directly to your other device on the local network. Allow Papercase to find and connect to nearby devices to use it.\n\nYou can still move documents with a backup file instead.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
     private fun startP2pSendFlow() {
         val ip = P2pNetworkHelper.getLocalWifiIpAddress()
@@ -1274,7 +1373,7 @@ class MainActivity : AppCompatActivity() {
                 showUnsupportedTransferCodeDialog()
                 return
             }
-            if (ensureDeviceProtectedForReceive()) startP2pReceiverFlow(target)
+            if (ensureDeviceProtectedForReceive()) withLocalNetworkAccess { startP2pReceiverFlow(target) }
         } else {
             // Standard manual token
             if (activeTokenInput != null) {
@@ -1345,6 +1444,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showConflictResolutionOrCommit(report: VaultConflictReport) {
         if (!report.hasChanges) {
+            restoreBackupExtras(report, replaced = false)
             Toast.makeText(this, "Already up to date. Nothing to import.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1408,6 +1508,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 loadSecureLockerDocuments()
+                restoreBackupExtras(report, replaced = strategy == ConflictResolutionStrategy.REPLACE_ALL)
             } catch (e: Exception) {
                 MaterialAlertDialogBuilder(this@MainActivity)
                     .setTitle("Import Error")
@@ -1416,6 +1517,30 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+
+    /**
+     * Settings, passphrase and reminder status from a backup, once its documents are in. Settings are
+     * only taken on a new phone or when replacing the locker, so a merge keeps this phone's choices.
+     */
+    private fun restoreBackupExtras(report: VaultConflictReport, replaced: Boolean) {
+        val extras = report.extras
+        extras.settings?.let { prefs.importSettings(it, replaceSettings = replaced || report.localWasEmpty) }
+        ReminderStore.restoreState(this, extras.reminders)
+        if (prefs.isExpiryRemindersEnabled && !ReminderNotifier.canNotify(this) &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        ) {
+            requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val passphrase = extras.passphrase ?: return
+        if (prefs.hasStoredPassphrase) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Restore passphrase?")
+            .setMessage("This backup includes your master passphrase. Save it on this phone?")
+            .setPositiveButton(R.string.btn_save) { _, _ -> savePassphraseWithBiometrics(passphrase) }
+            .setNegativeButton("Not now", null)
+            .show()
     }
 
     // ==========================================
@@ -1552,9 +1677,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tokenInput = android.widget.EditText(this).apply {
-            hint = "PCASE-XXXX-XXXX-XXXX-XXXX-XXXX"
+            hint = "Token or backup password"
             typeface = android.graphics.Typeface.MONOSPACE
-            inputType = android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
         }
         activeTokenInput = tokenInput
         layout.addView(tokenInput)
@@ -1576,8 +1701,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btnScanQr)
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("Enter Secure Token")
-            .setMessage("Enter the Secure Token or scan the QR code from the exporting device to decrypt the vault:")
+            .setTitle("Unlock backup")
+            .setMessage("Enter the token shown when the backup was exported (or scan its QR code). For automatic backups, enter your backup password.")
             .setView(layout)
             .setPositiveButton("Decrypt & Import") { _, _ ->
                 val token = tokenInput.text.toString().trim()

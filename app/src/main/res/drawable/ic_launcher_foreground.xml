@@ -1,72 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Papercase: two sheets of paper tucked into a document case -->
 
-    <!-- Shield Glow / Shadow Drop -->
+    <!-- Back sheet -->
+    <group android:rotation="8" android:pivotX="58" android:pivotY="44">
+        <path
+            android:fillColor="#D3E3FD"
+            android:pathData="M45,27 H69 A3,3 0 0 1 72,30 V60 A3,3 0 0 1 69,63 H45 A3,3 0 0 1 42,60 V30 A3,3 0 0 1 45,27 Z" />
+    </group>
+
+    <!-- Front sheet with text lines -->
+    <group android:rotation="-5" android:pivotX="50" android:pivotY="45">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M37,29 H62 A3,3 0 0 1 65,32 V63 A3,3 0 0 1 62,66 H37 A3,3 0 0 1 34,63 V32 A3,3 0 0 1 37,29 Z" />
+        <path
+            android:fillAlpha="0.6"
+            android:fillColor="#0B57D0"
+            android:pathData="M40.3,36 H54.7 A1.3,1.3 0 0 1 56,37.3 V37.300000000000004 A1.3,1.3 0 0 1 54.7,38.6 H40.3 A1.3,1.3 0 0 1 39,37.300000000000004 V37.3 A1.3,1.3 0 0 1 40.3,36 Z" />
+        <path
+            android:fillAlpha="0.32"
+            android:fillColor="#0B57D0"
+            android:pathData="M40.3,41.5 H58.7 A1.3,1.3 0 0 1 60,42.8 V42.800000000000004 A1.3,1.3 0 0 1 58.7,44.1 H40.3 A1.3,1.3 0 0 1 39,42.800000000000004 V42.8 A1.3,1.3 0 0 1 40.3,41.5 Z M40.3,47 H51.7 A1.3,1.3 0 0 1 53,48.3 V48.300000000000004 A1.3,1.3 0 0 1 51.7,49.6 H40.3 A1.3,1.3 0 0 1 39,48.300000000000004 V48.3 A1.3,1.3 0 0 1 40.3,47 Z" />
+    </group>
+
+    <!-- Case -->
     <path
-        android:fillColor="#33000000"
-        android:pathData="M54,27 L82,34 C82,59 70,77 54,84 C38,77 26,59 26,34 Z" />
-
-    <!-- Outer Security Shield -->
-    <path android:pathData="M54,25 L81,32 C81,57 69,75 54,82 C39,75 27,57 27,32 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:angle="270"
-                android:endX="54"
-                android:endY="82"
-                android:startX="54"
-                android:startY="25"
-                android:type="linear">
-                <item android:color="#00B4D8" android:offset="0.0" />
-                <item android:color="#0077B6" android:offset="0.7" />
-                <item android:color="#023E8A" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Inner Shield Inset Accent for depth -->
+        android:fillColor="#062E6F"
+        android:pathData="M30,53 H78 V72 A7,7 0 0 1 71,79 H37 A7,7 0 0 1 30,72 Z" />
     <path
-        android:fillColor="#0D1B2A"
-        android:pathData="M54,29 L77,35 C77,55 67,70 54,77 C41,70 31,55 31,35 Z" />
+        android:fillColor="#0842A0"
+        android:pathData="M30,53 H78 V57 H30 Z" />
 
-    <!-- Padlock Shackle -->
+    <!-- Clasp -->
     <path
-        android:fillColor="#00000000"
-        android:strokeWidth="3.6"
-        android:strokeColor="#CAF0F8"
-        android:strokeLineCap="round"
-        android:pathData="M46,49 V43 C46,38.6 49.6,35 54,35 C58.4,35 62,38.6 62,43 V49" />
-
-    <!-- Padlock Body -->
+        android:fillColor="#FFC857"
+        android:pathData="M51,51.5 H57 A3,3 0 0 1 60,54.5 V60 A3,3 0 0 1 57,63 H51 A3,3 0 0 1 48,60 V54.5 A3,3 0 0 1 51,51.5 Z" />
     <path
-        android:pathData="M42,49 H66 C67.65,49 69,50.35 69,52 V68 C69,69.65 67.65,71 66,71 H42 C40.35,71 39,69.65 39,68 V52 C39,50.35 40.35,49 42,49 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:angle="270"
-                android:endX="54"
-                android:endY="71"
-                android:startX="54"
-                android:startY="49"
-                android:type="linear">
-                <item android:color="#FFFFFF" android:offset="0.0" />
-                <item android:color="#E0E6ED" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Keyhole / Security Core -->
-    <path
-        android:fillColor="#023E8A"
-        android:pathData="M54,55 C52.6,55 51.5,56.1 51.5,57.5 C51.5,58.4 52.0,59.2 52.7,59.7 L52.2,65 H55.8 L55.3,59.7 C56.0,59.2 56.5,58.4 56.5,57.5 C56.5,56.1 55.4,55 54,55 Z" />
-
-    <!-- Biometric Arc Lines inside the Shield Base -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeWidth="1.2"
-        android:strokeColor="#48CAE4"
-        android:strokeLineCap="round"
-        android:pathData="M48,74 C51.5,75.2 56.5,75.2 60,74" />
+        android:fillColor="#062E6F"
+        android:pathData="M54,55.45 A1.8,1.8 0 1 0 54,59.05 A1.8,1.8 0 1 0 54,55.45 Z" />
 </vector>

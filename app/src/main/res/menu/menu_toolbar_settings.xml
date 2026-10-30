@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:id="@+id/action_transfer"
-        android:title="Transfer &amp; backup" />
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
         android:id="@+id/action_lock"
-        android:title="Lock now" />
+        android:icon="@drawable/ic_lock"
+        android:title="Lock now"
+        app:iconTint="?attr/colorOnSurfaceVariant" />
+    <item
+        android:id="@+id/action_transfer"
+        android:icon="@drawable/ic_swap_vert"
+        android:title="Transfer &amp; backup"
+        app:iconTint="?attr/colorOnSurfaceVariant" />
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="Settings"
+        app:iconTint="?attr/colorOnSurfaceVariant" />
     <item
         android:id="@+id/action_about"
-        android:title="About" />
+        android:icon="@drawable/ic_info"
+        android:title="About"
+        app:iconTint="?attr/colorOnSurfaceVariant" />
 </menu>
