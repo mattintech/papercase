@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds: the normal icon with a "DEBUG" pill in the top-right, so it's easy to tell apart -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+    <item
+        android:width="36dp"
+        android:height="14.4dp"
+        android:drawable="@drawable/ic_debug_badge"
+        android:gravity="top|end"
+        android:right="19dp"
+        android:top="21dp" />
+</layer-list>
