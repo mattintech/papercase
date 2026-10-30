@@ -781,7 +781,7 @@
                 style="@style/Widget.Material3.Button"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:text="Save to Secure Locker"
+                android:text="Save to Locker"
                 android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                 android:textStyle="bold"
                 app:cornerRadius="16dp"

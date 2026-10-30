@@ -148,7 +148,7 @@ class DocumentViewerActivity : AppCompatActivity() {
                 repository.getDocumentById(id)
             } catch (e: Exception) {
                 // Locker key needs a fresh unlock (or was lost): go back to the locker screen
-                Toast.makeText(this@DocumentViewerActivity, "Secure Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@DocumentViewerActivity, "Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
                 finish()
                 return@launch
             }
@@ -452,7 +452,7 @@ class DocumentViewerActivity : AppCompatActivity() {
     private fun showDeleteConfirmDialog() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Delete Document?")
-            .setMessage("This will permanently erase this document and all its encrypted attachments from your Secure Locker. This cannot be undone.")
+            .setMessage("This will permanently erase this document and all its encrypted attachments from your locker. This cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
                 documentId?.let { id ->
                     lifecycleScope.launch {
