@@ -1,18 +1,17 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
 }
 
 android {
     namespace = "com.mattintech.papercase"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
         applicationId = "com.mattintech.papercase"
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 37
         // Used by local and F-Droid builds. The Google Play release workflow overrides
         // both with -PversionName (from the git tag) and -PversionCode (next free code on Play).
         versionCode = 2
@@ -72,9 +71,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-    kotlinOptions {
-        jvmTarget = "11"
     }
 }
 

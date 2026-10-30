@@ -1,5 +1,6 @@
 package com.mattintech.papercase.service
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
@@ -38,6 +39,8 @@ class PapercaseTileService : TileService() {
             )
             startActivityAndCollapse(pendingIntent)
         } else {
+            // Only reached below API 34, where the Intent overload is still supported
+            @SuppressLint("StartActivityAndCollapseDeprecated")
             @Suppress("DEPRECATION")
             startActivityAndCollapse(intent)
         }

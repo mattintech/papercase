@@ -102,6 +102,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    // Action waiting on the local network permission prompt
+    private var pendingLocalNetworkAction: (() -> Unit)? = null
+
+    private val requestLocalNetworkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            val action = pendingLocalNetworkAction
+            pendingLocalNetworkAction = null
+            if (isGranted) action?.invoke() else showLocalNetworkPermissionRequired()
+        }
+
     private val barcodeLauncher =
         registerForActivityResult(ScanContract()) { result ->
             SessionManager.isExternalOperationActive = false
@@ -299,7 +309,7 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Receive documents?")
             .setMessage("Receive a vault from the device at ${target.ip}.\n\nOnly continue if you just scanned the QR code on your own device.")
-            .setPositiveButton("Continue") { _, _ -> startP2pReceiverFlow(target) }
+            .setPositiveButton("Continue") { _, _ -> withLocalNetworkAccess { startP2pReceiverFlow(target) } }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -1058,7 +1068,7 @@ class MainActivity : AppCompatActivity() {
 
         sheetBinding.cardSendP2p.setOnClickListener {
             bottomSheet.dismiss()
-            startP2pSendFlow()
+            withLocalNetworkAccess { startP2pSendFlow() }
         }
 
         sheetBinding.cardReceiveP2p.setOnClickListener {
@@ -1082,6 +1092,35 @@ class MainActivity : AppCompatActivity() {
     // ==========================================
     // P2P LOCAL WI-FI SENDER FLOW
     // ==========================================
+
+    /**
+     * Android 17 blocks local network sockets (both connecting and accepting) for apps targeting
+     * API 37 until ACCESS_LOCAL_NETWORK is granted. Older versions allow it with INTERNET.
+     */
+    private fun withLocalNetworkAccess(action: () -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.CINNAMON_BUN ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            action()
+            return
+        }
+        pendingLocalNetworkAction = action
+        requestLocalNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+    }
+
+    private fun showLocalNetworkPermissionRequired() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Nearby devices permission needed")
+            .setMessage("Wi-Fi transfer connects directly to your other device on the local network. Allow Papercase to find and connect to nearby devices to use it.\n\nYou can still move documents with a backup file instead.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
     private fun startP2pSendFlow() {
         val ip = P2pNetworkHelper.getLocalWifiIpAddress()
@@ -1271,7 +1310,7 @@ class MainActivity : AppCompatActivity() {
                 showUnsupportedTransferCodeDialog()
                 return
             }
-            if (ensureDeviceProtectedForReceive()) startP2pReceiverFlow(target)
+            if (ensureDeviceProtectedForReceive()) withLocalNetworkAccess { startP2pReceiverFlow(target) }
         } else {
             // Standard manual token
             if (activeTokenInput != null) {
