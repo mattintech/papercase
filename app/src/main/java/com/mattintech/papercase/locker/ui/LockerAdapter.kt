@@ -24,6 +24,8 @@ sealed class LockerItem {
     /** [expiredCount]: expired documents anywhere inside, so they aren't missed in subfolders. */
     data class FolderItem(val folder: Folder, val folderCount: Int, val documentCount: Int, val expiredCount: Int = 0) : LockerItem()
     data class DocItem(val doc: SecureDocument) : LockerItem()
+    /** Fills the rest of the last folder row in the grid, so documents start on a new row. */
+    data object RowEnd : LockerItem()
 }
 
 /** The locker: folder tiles first, then documents, shown as list rows or thumbnail cards. */
@@ -45,6 +47,7 @@ class LockerAdapter(
         }
 
     override fun getItemViewType(position: Int) = when {
+        getItem(position) is LockerItem.RowEnd -> TYPE_ROW_END
         getItem(position) is LockerItem.FolderItem -> TYPE_FOLDER
         cards -> TYPE_CARD
         else -> TYPE_ROW
@@ -53,6 +56,9 @@ class LockerAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
+            TYPE_ROW_END -> object : RecyclerView.ViewHolder(View(parent.context).apply {
+                layoutParams = ViewGroup.MarginLayoutParams(0, 0)
+            }) {}
             TYPE_FOLDER -> FolderHolder(ItemFolderBinding.inflate(inflater, parent, false))
             TYPE_CARD -> CardHolder(ItemDocumentCardBinding.inflate(inflater, parent, false))
             else -> RowHolder(ItemSecureDocumentBinding.inflate(inflater, parent, false))
@@ -61,6 +67,7 @@ class LockerAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = getItem(position)) {
+            is LockerItem.RowEnd -> Unit
             is LockerItem.FolderItem -> (holder as FolderHolder).bind(item)
             is LockerItem.DocItem -> when (holder) {
                 is CardHolder -> holder.bind(item.doc)
@@ -89,6 +96,7 @@ class LockerAdapter(
             // In the grid, cards sit 6dp apart; in the list, rows line up with the documents
             if (cards) b.root.setMargins(6, 6) else b.root.setMargins(0, 12)
             b.tvFolderName.text = item.folder.name
+            bindFolderIcon(item.folder)
             val counts = countText(item.folderCount, item.documentCount)
             if (item.expiredCount > 0) {
                 val expired = "${item.expiredCount} expired"
@@ -104,6 +112,23 @@ class LockerAdapter(
             }
             b.root.setOnClickListener { onOpenFolder(item.folder) }
             b.btnMore.setOnClickListener { onFolderMore(item.folder, it) }
+        }
+
+        /** The plain folder icon, or the icon and colour picked for this folder (e.g. a child's face). */
+        private fun bindFolderIcon(folder: Folder) {
+            val view = b.ivFolderIcon
+            val d = view.resources.displayMetrics.density
+            if (folder.iconKey.isEmpty() && folder.iconColor.isEmpty()) {
+                view.setImageResource(com.mattintech.papercase.R.drawable.ic_folder)
+                view.background = null
+                view.imageTintList = android.content.res.ColorStateList.valueOf(
+                    MaterialColors.getColor(view, com.google.android.material.R.attr.colorOnSecondaryContainer)
+                )
+                view.setPadding((6 * d).toInt(), (6 * d).toInt(), (6 * d).toInt(), (6 * d).toInt())
+            } else {
+                DocumentIcons.apply(view, DocumentIcons.iconRes(folder.iconKey, com.mattintech.papercase.R.drawable.ic_folder), folder.iconColor)
+                view.setPadding((8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt())
+            }
         }
 
         private fun countText(folders: Int, docs: Int): String {
@@ -244,6 +269,7 @@ class LockerAdapter(
         override fun areItemsTheSame(a: LockerItem, b: LockerItem) = when {
             a is LockerItem.FolderItem && b is LockerItem.FolderItem -> a.folder.id == b.folder.id
             a is LockerItem.DocItem && b is LockerItem.DocItem -> a.doc.id == b.doc.id
+            a is LockerItem.RowEnd && b is LockerItem.RowEnd -> true
             else -> false
         }
 
@@ -257,5 +283,6 @@ class LockerAdapter(
         private const val TYPE_FOLDER = 0
         private const val TYPE_ROW = 1
         private const val TYPE_CARD = 2
+        private const val TYPE_ROW_END = 3
     }
 }

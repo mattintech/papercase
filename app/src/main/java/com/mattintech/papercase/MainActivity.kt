@@ -637,15 +637,11 @@ class MainActivity : AppCompatActivity() {
             val columns = (resources.configuration.screenWidthDp / 180).coerceIn(2, 5)
             val current = rv.layoutManager as? GridLayoutManager
             if (current?.spanCount != columns) rv.layoutManager = GridLayoutManager(this, columns).apply {
-                // The last folder fills its row, so documents start on a row of their own and folder
-                // tiles aren't stretched to the height of a document card
+                // A RowEnd item fills the rest of the last folder row, so documents start on a row of
+                // their own and folder tiles aren't stretched to the height of a document card
                 spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                    override fun getSpanSize(position: Int): Int {
-                        val items = lockerAdapter.currentList
-                        val isLastFolder = items.getOrNull(position) is LockerItem.FolderItem &&
-                            items.getOrNull(position + 1) !is LockerItem.FolderItem
-                        return if (isLastFolder) columns - position % columns else 1
-                    }
+                    override fun getSpanSize(position: Int): Int =
+                        if (lockerAdapter.currentList.getOrNull(position) is LockerItem.RowEnd) columns - position % columns else 1
                 }
             }
         } else if (rv.layoutManager !is LinearLayoutManager || rv.layoutManager is GridLayoutManager) {
@@ -684,7 +680,10 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         }
-        val items = subfolders + sortDocuments(docsHere).map { LockerItem.DocItem(it) }
+        val docItems = sortDocuments(docsHere).map { LockerItem.DocItem(it) }
+        val columns = (binding.rvSecureDocuments.layoutManager as? GridLayoutManager)?.spanCount ?: 1
+        val rowEnd = if (columns > 1 && docItems.isNotEmpty() && subfolders.size % columns != 0) listOf(LockerItem.RowEnd) else emptyList()
+        val items = subfolders + rowEnd + docItems
         lockerAdapter.submitList(items)
 
         val lockerEmpty = allDocuments.isEmpty() && folders.isEmpty()

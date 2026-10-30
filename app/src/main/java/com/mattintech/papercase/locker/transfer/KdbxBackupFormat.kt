@@ -361,6 +361,8 @@ internal object KdbxBackupFormat {
                     id = child.uuid.toString(),
                     name = child.name.ifBlank { "Folder" },
                     parentId = folderId,
+                    iconKey = stored?.iconKey.orEmpty(),
+                    iconColor = stored?.iconColor.orEmpty(),
                     createdAt = stored?.createdAt ?: child.times?.creationTime?.toEpochMilli() ?: System.currentTimeMillis(),
                     // Exact time unless the group was changed in another app since
                     updatedAt = stored?.updatedAt?.takeIf { modified == null || it / 1000 == modified / 1000 }

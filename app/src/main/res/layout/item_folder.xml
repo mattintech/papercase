@@ -19,9 +19,11 @@
         android:paddingStart="16dp">
 
         <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:id="@+id/ivFolderIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:importantForAccessibility="no"
+            android:padding="6dp"
             android:src="@drawable/ic_folder"
             app:tint="?attr/colorOnSecondaryContainer" />
 
