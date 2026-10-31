@@ -1,6 +1,7 @@
 package com.mattintech.papercase.locker.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.view.View
 import android.widget.ImageView
@@ -18,6 +19,7 @@ import com.mattintech.papercase.crypto.BiometricAuthHelper
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.Folder
+import com.mattintech.papercase.locker.model.FolderPhoto
 import com.mattintech.papercase.locker.model.FolderTree
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
@@ -34,11 +36,13 @@ import javax.crypto.SecretKey
  * device, move, edit, delete), folder options, and the folder picker.
  *
  * [pickSaveFolder] opens the system folder picker and calls back with the chosen folder.
+ * [pickPhoto] opens the camera (or the gallery), then the crop screen, and calls back with the photo.
  */
 class LockerActions(
     private val activity: AppCompatActivity,
     private val repository: SecureLockerRepository,
     private val pickSaveFolder: (onPicked: (Uri) -> Unit) -> Unit,
+    private val pickPhoto: (camera: Boolean, onPicked: (Bitmap) -> Unit) -> Unit,
     private val onChanged: () -> Unit
 ) {
 
@@ -229,17 +233,23 @@ class LockerActions(
     fun showFolderMenu(folder: Folder, anchor: View, folders: List<Folder>) {
         val popup = PopupMenu(activity, anchor)
         popup.menu.add(0, 1, 0, "Rename")
-        popup.menu.add(0, 4, 1, "Change icon")
+        popup.menu.add(0, 4, 1, "Change icon or photo")
         popup.menu.add(0, 2, 2, "Move")
         popup.menu.add(0, 3, 3, "Delete")
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> promptFolderName("Rename folder", folder.name) { name -> launch { repository.saveFolder(folder.copy(name = name)) } }
-                4 -> IconPickerSheet(activity, R.drawable.ic_folder, folder.iconKey, folder.iconColor, onDone = { key, colour ->
-                    if (key != folder.iconKey || colour != folder.iconColor) {
-                        launch { repository.saveFolder(folder.copy(iconKey = key, iconColor = colour)) }
-                    }
-                }).show()
+                4 -> IconPickerSheet(
+                    activity, R.drawable.ic_folder, folder.iconKey, folder.iconColor,
+                    // Picking an icon or colour replaces the photo
+                    onDone = { key, colour ->
+                        if (key != folder.iconKey || colour != folder.iconColor) {
+                            launch { repository.saveFolder(folder.copy(iconKey = key, iconColor = colour, photo = "")) }
+                        }
+                    },
+                    hasPhoto = folder.photo.isNotEmpty(),
+                    onPhoto = { action -> changeFolderPhoto(folder, action) }
+                ).show()
                 2 -> pickFolder(
                     folders, title = "Move ${folder.name} to",
                     exclude = FolderTree.subtree(folders, folder.id),
@@ -258,6 +268,21 @@ class LockerActions(
             true
         }
         popup.show()
+    }
+
+    private fun changeFolderPhoto(folder: Folder, action: IconPickerSheet.PhotoAction) {
+        if (action == IconPickerSheet.PhotoAction.REMOVE) {
+            launch { repository.saveFolder(folder.copy(photo = "")) }
+            return
+        }
+        pickPhoto(action == IconPickerSheet.PhotoAction.TAKE) { bitmap ->
+            launch {
+                val photo = withContext(Dispatchers.Default) { FolderPhoto.encode(bitmap) }
+                // Re-read so a change made while the camera was open isn't lost
+                val current = repository.getFolders().find { it.id == folder.id } ?: return@launch
+                repository.saveFolder(current.copy(photo = photo))
+            }
+        }
     }
 
     fun promptNewFolder(parentId: String, onCreated: (Folder) -> Unit = {}) {

@@ -4,6 +4,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -13,6 +14,7 @@ import com.mattintech.papercase.databinding.ItemFolderBinding
 import com.mattintech.papercase.databinding.ItemSecureDocumentBinding
 import com.mattintech.papercase.locker.model.DocumentIcons
 import com.mattintech.papercase.locker.model.Folder
+import com.mattintech.papercase.locker.model.FolderPhoto
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.reminders.ExpiryDates
 import kotlinx.coroutines.CoroutineScope
@@ -114,11 +116,19 @@ class LockerAdapter(
             b.btnMore.setOnClickListener { onFolderMore(item.folder, it) }
         }
 
-        /** The plain folder icon, or the icon and colour picked for this folder (e.g. a child's face). */
+        /** The folder's photo, the icon and colour picked for it (e.g. a child's face), or the plain folder icon. */
         private fun bindFolderIcon(folder: Folder) {
             val view = b.ivFolderIcon
             val d = view.resources.displayMetrics.density
-            if (folder.iconKey.isEmpty() && folder.iconColor.isEmpty()) {
+            val photo = folder.photo.takeIf { it.isNotEmpty() }?.let(FolderPhoto::decode)
+            view.scaleType = if (photo != null) ImageView.ScaleType.CENTER_CROP else ImageView.ScaleType.FIT_CENTER
+            view.clipToOutline = photo != null
+            if (photo != null) {
+                view.setImageBitmap(photo)
+                view.imageTintList = null
+                view.background = GradientDrawable().apply { shape = GradientDrawable.OVAL }
+                view.setPadding(0, 0, 0, 0)
+            } else if (folder.iconKey.isEmpty() && folder.iconColor.isEmpty()) {
                 view.setImageResource(com.mattintech.papercase.R.drawable.ic_folder)
                 view.background = null
                 view.imageTintList = android.content.res.ColorStateList.valueOf(

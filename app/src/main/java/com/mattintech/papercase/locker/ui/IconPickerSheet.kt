@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.mattintech.papercase.locker.model.DocumentIcons
 import com.mattintech.papercase.ui.SecureBottomSheetDialog
@@ -18,6 +19,8 @@ import com.mattintech.papercase.ui.SecureBottomSheetDialog
 /**
  * Bottom sheet for choosing an icon and its colour. A blank icon key means [defaultIcon] (the
  * document type's icon, or the folder icon). [onChanged] runs on every tap; [onDone] once, on close.
+ * With [onPhoto] (folders), it also offers a photo; picking a photo action closes the sheet and calls
+ * [onPhoto] instead of [onDone].
  */
 class IconPickerSheet(
     private val context: Context,
@@ -25,8 +28,13 @@ class IconPickerSheet(
     private var iconKey: String,
     private var colourKey: String,
     private val onDone: ((iconKey: String, colourKey: String) -> Unit)? = null,
+    private val hasPhoto: Boolean = false,
+    private val onPhoto: ((PhotoAction) -> Unit)? = null,
     private val onChanged: (iconKey: String, colourKey: String) -> Unit = { _, _ -> }
 ) {
+    enum class PhotoAction { TAKE, CHOOSE, REMOVE }
+
+    private var photoAction: PhotoAction? = null
     private val dialog = SecureBottomSheetDialog(context)
     private val iconGrid = GridLayout(context).apply { columnCount = COLUMNS }
     private val colourRow = GridLayout(context).apply { columnCount = COLUMNS }
@@ -35,7 +43,13 @@ class IconPickerSheet(
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(8), dp(24), dp(32))
-            addView(header("Icon"))
+            if (onPhoto != null) {
+                addView(header("Photo"))
+                addView(photoRow())
+                addView(header("Icon").apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(20) })
+            } else {
+                addView(header("Icon"))
+            }
             addView(iconGrid)
             addView(header("Colour").apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(20) })
             addView(colourRow)
@@ -43,7 +57,10 @@ class IconPickerSheet(
         render()
         dialog.setContentView(NestedScrollView(context).apply { addView(content) })
         dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
-        dialog.setOnDismissListener { onDone?.invoke(iconKey, colourKey) }
+        dialog.setOnDismissListener {
+            val action = photoAction
+            if (action != null) onPhoto?.invoke(action) else onDone?.invoke(iconKey, colourKey)
+        }
         dialog.show()
     }
 
@@ -83,6 +100,23 @@ class IconPickerSheet(
                 setOnClickListener {
                     colourKey = colour.key
                     changed()
+                }
+            })
+        }
+    }
+
+    private fun photoRow() = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        val actions = listOf(PhotoAction.TAKE to "Camera", PhotoAction.CHOOSE to "Gallery") +
+            if (hasPhoto) listOf(PhotoAction.REMOVE to "Remove") else emptyList()
+        actions.forEachIndexed { i, (action, label) ->
+            addView(MaterialButton(context, null, com.google.android.material.R.attr.materialButtonTonalStyle).apply {
+                text = label
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    .apply { if (i > 0) marginStart = dp(8) }
+                setOnClickListener {
+                    photoAction = action
+                    dialog.dismiss()
                 }
             })
         }

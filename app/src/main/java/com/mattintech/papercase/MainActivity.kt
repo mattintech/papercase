@@ -21,6 +21,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -65,11 +66,14 @@ import com.mattintech.papercase.locker.transfer.VaultConflictReport
 import com.mattintech.papercase.locker.transfer.VaultExportImportManager
 import com.mattintech.papercase.locker.ui.AddDocumentActivity
 import com.mattintech.papercase.locker.ui.DocumentViewerActivity
+import com.mattintech.papercase.locker.ui.ImageMetadataStripper
 import com.mattintech.papercase.locker.ui.LockerActions
 import com.mattintech.papercase.locker.ui.LockerAdapter
 import com.mattintech.papercase.locker.ui.LockerItem
 import com.mattintech.papercase.locker.ui.LockerSettingsActivity
+import com.mattintech.papercase.locker.ui.OrientedBitmap
 import com.mattintech.papercase.locker.ui.ThumbnailLoader
+import com.mattintech.papercase.locker.ui.crop.CropActivity
 import com.mattintech.papercase.store.AppUpdatePrompt
 import com.mattintech.papercase.ui.SecureAlertDialogBuilder
 import com.mattintech.papercase.ui.SecureBottomSheetDialog
@@ -110,6 +114,63 @@ class MainActivity : AppCompatActivity() {
             val callback = onSaveFolderPicked
             onSaveFolderPicked = null
             if (uri != null) callback?.invoke(uri)
+        }
+
+    // Folder photo: camera or gallery, then the crop screen
+    private var onFolderPhotoPicked: ((android.graphics.Bitmap) -> Unit)? = null
+    private var folderPhotoFile: File? = null
+
+    private val folderPhotoCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) launchFolderPhotoCamera() else {
+                onFolderPhotoPicked = null
+                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private val folderPhotoCameraLauncher =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
+            val file = folderPhotoFile ?: return@registerForActivityResult
+            folderPhotoFile = null
+            lifecycleScope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    try {
+                        if (success && file.exists()) file.readBytes() else null
+                    } finally {
+                        file.delete()
+                    }
+                }
+                if (bytes != null) cropFolderPhoto(bytes) else onFolderPhotoPicked = null
+            }
+        }
+
+    private val folderPhotoGalleryLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
+            if (uri == null) {
+                onFolderPhotoPicked = null
+                return@registerForActivityResult
+            }
+            lifecycleScope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                }
+                if (bytes != null) cropFolderPhoto(bytes) else {
+                    onFolderPhotoPicked = null
+                    Toast.makeText(this@MainActivity, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+    private val folderPhotoCropLauncher =
+        registerForActivityResult(CropActivity.Contract()) { bitmap ->
+            SessionManager.keepAlive()
+            val callback = onFolderPhotoPicked
+            onFolderPhotoPicked = null
+            if (bitmap != null) callback?.invoke(bitmap)
         }
 
     // Back goes up a folder before leaving the app
@@ -573,6 +634,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun launchFolderPhotoCamera() {
+        try {
+            val dir = File(cacheDir, "camera").apply { if (!exists()) mkdirs() }
+            val file = File(dir, "folder_${System.currentTimeMillis()}.jpg")
+            folderPhotoFile = file
+            SessionManager.isExternalOperationActive = true
+            folderPhotoCameraLauncher.launch(FileProvider.getUriForFile(this, "$packageName.fileprovider", file))
+        } catch (e: Exception) {
+            SessionManager.isExternalOperationActive = false
+            folderPhotoFile = null
+            onFolderPhotoPicked = null
+            Toast.makeText(this, "Could not open camera: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Decodes a photo upright and at a manageable size, then opens the crop screen to frame it. */
+    private suspend fun cropFolderPhoto(bytes: ByteArray) {
+        val bitmap = withContext(Dispatchers.Default) { OrientedBitmap.decode(bytes)?.let(ImageMetadataStripper::shrink) }
+        if (bitmap != null) {
+            folderPhotoCropLauncher.launch(bitmap)
+        } else {
+            onFolderPhotoPicked = null
+            Toast.makeText(this, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun setupLocker() {
         thumbnailLoader = ThumbnailLoader(lockerRepository)
         lockerActions = LockerActions(
@@ -582,6 +669,20 @@ class MainActivity : AppCompatActivity() {
                 onSaveFolderPicked = onPicked
                 SessionManager.isExternalOperationActive = true
                 pickSaveFolderLauncher.launch(null)
+            },
+            pickPhoto = { camera, onPicked ->
+                onFolderPhotoPicked = onPicked
+                when {
+                    !camera -> {
+                        SessionManager.isExternalOperationActive = true
+                        folderPhotoGalleryLauncher.launch(
+                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED ->
+                        launchFolderPhotoCamera()
+                    else -> folderPhotoCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
             },
             onChanged = { loadSecureLockerDocuments() }
         )
