@@ -2,6 +2,7 @@ package com.mattintech.papercase.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.appcompat.app.AppCompatDelegate
 import com.mattintech.papercase.crypto.KeystoreHelper
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,6 +28,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_EXPIRY_REMINDERS_ASKED = "expiry_reminders_asked"
         private const val KEY_LOCKER_LAYOUT = "locker_layout"
         private const val KEY_LOCKER_SORT = "locker_sort"
+        const val KEY_THEME = "theme"
 
         const val NAME = PREF_NAME
 
@@ -34,7 +36,7 @@ class PreferencesManager(context: Context) {
         private val BACKED_UP_KEYS = setOf(
             KEY_AUTO_COPY, KEY_AUTO_MINIMIZE, KEY_AUTO_CLEAR, KEY_CLEAR_TIMEOUT_SECONDS,
             KEY_LOCKER_TIMEOUT_MINUTES, KEY_CUSTOM_AUTHORITIES, KEY_EXPIRY_REMINDERS,
-            KEY_LOCKER_LAYOUT, KEY_LOCKER_SORT
+            KEY_LOCKER_LAYOUT, KEY_LOCKER_SORT, KEY_THEME
         )
 
         fun isBackedUp(key: String?) = key in BACKED_UP_KEYS
@@ -51,6 +53,7 @@ class PreferencesManager(context: Context) {
         put(KEY_CUSTOM_AUTHORITIES, JSONArray(getCustomAuthorities().sorted()))
         put(KEY_LOCKER_LAYOUT, lockerLayout.name)
         put(KEY_LOCKER_SORT, lockerSort.name)
+        put(KEY_THEME, theme.name)
     }
 
     /**
@@ -73,6 +76,7 @@ class PreferencesManager(context: Context) {
             if (json.has(KEY_LOCKER_TIMEOUT_MINUTES)) edit.putInt(KEY_LOCKER_TIMEOUT_MINUTES, json.optInt(KEY_LOCKER_TIMEOUT_MINUTES))
             json.optString(KEY_LOCKER_LAYOUT).takeIf { it.isNotEmpty() }?.let { edit.putString(KEY_LOCKER_LAYOUT, it) }
             json.optString(KEY_LOCKER_SORT).takeIf { it.isNotEmpty() }?.let { edit.putString(KEY_LOCKER_SORT, it) }
+            json.optString(KEY_THEME).takeIf { it.isNotEmpty() }?.let { edit.putString(KEY_THEME, it) }
             if (json.has(KEY_EXPIRY_REMINDERS)) {
                 edit.putBoolean(KEY_EXPIRY_REMINDERS, json.optBoolean(KEY_EXPIRY_REMINDERS))
                 edit.putBoolean(KEY_EXPIRY_REMINDERS_ASKED, true)
@@ -99,6 +103,17 @@ class PreferencesManager(context: Context) {
         EXPIRY("Next to expire"),
         NAME("Name (A–Z)")
     }
+
+    /** Light, dark, or following the system setting; [mode] is the AppCompatDelegate night mode. */
+    enum class Theme(val label: String, val mode: Int) {
+        SYSTEM("System", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM),
+        LIGHT("Light", AppCompatDelegate.MODE_NIGHT_NO),
+        DARK("Dark", AppCompatDelegate.MODE_NIGHT_YES)
+    }
+
+    var theme: Theme
+        get() = runCatching { Theme.valueOf(prefs.getString(KEY_THEME, null)!!) }.getOrDefault(Theme.SYSTEM)
+        set(value) = prefs.edit().putString(KEY_THEME, value.name).apply()
 
     var lockerLayout: LockerLayout
         get() = runCatching { LockerLayout.valueOf(prefs.getString(KEY_LOCKER_LAYOUT, null)!!) }.getOrDefault(LockerLayout.LIST)

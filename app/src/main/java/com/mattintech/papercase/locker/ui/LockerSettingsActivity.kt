@@ -20,6 +20,7 @@ import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.data.PreferencesManager
 import com.mattintech.papercase.data.PreferencesManager.LockerLayout
 import com.mattintech.papercase.data.PreferencesManager.LockerSort
+import com.mattintech.papercase.data.PreferencesManager.Theme
 import com.mattintech.papercase.databinding.ActivityLockerSettingsBinding
 import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.backup.AutoBackupManager.Frequency
@@ -101,6 +102,11 @@ class LockerSettingsActivity : AppCompatActivity() {
             render()
         }
 
+        binding.chipGroupTheme.setOnCheckedStateChangeListener { _, ids ->
+            if (updatingUi) return@setOnCheckedStateChangeListener
+            // The app applies it when the setting changes; open screens redraw in the new theme
+            themeChips().entries.firstOrNull { it.value.id == ids.firstOrNull() }?.let { prefs.theme = it.key }
+        }
         binding.chipGroupLayout.setOnCheckedStateChangeListener { _, ids ->
             if (updatingUi) return@setOnCheckedStateChangeListener
             prefs.lockerLayout = if (ids.firstOrNull() == binding.chipLayoutCards.id) LockerLayout.CARDS else LockerLayout.LIST
@@ -216,6 +222,12 @@ class LockerSettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun themeChips() = mapOf(
+        Theme.SYSTEM to binding.chipThemeSystem,
+        Theme.LIGHT to binding.chipThemeLight,
+        Theme.DARK to binding.chipThemeDark
+    )
+
     private fun sortChips() = mapOf(
         LockerSort.ADDED to binding.chipSortAdded,
         LockerSort.MODIFIED to binding.chipSortModified,
@@ -225,6 +237,7 @@ class LockerSettingsActivity : AppCompatActivity() {
 
     private fun render() {
         updatingUi = true
+        binding.chipGroupTheme.check(themeChips().getValue(prefs.theme).id)
         binding.chipGroupLayout.check(
             if (prefs.lockerLayout == LockerLayout.CARDS) binding.chipLayoutCards.id else binding.chipLayoutList.id
         )
