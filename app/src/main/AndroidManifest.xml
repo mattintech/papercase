@@ -5,7 +5,6 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -85,15 +84,12 @@
             android:taskAffinity=""
             android:theme="@style/Theme.Papercase.Translucent" />
 
-        <!-- Foreground Service to keep 10-second countdown alive against Samsung Freecess -->
+        <!-- Foreground Service to keep the clipboard countdown (30 seconds at most) alive against
+             Samsung Freecess. A short service: no extra permission, and Android lets it run ~3 minutes. -->
         <service
             android:name=".clipboard.ClipboardCountdownService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Timeout-based sensitive clipboard wipe protection" />
-        </service>
+            android:foregroundServiceType="shortService" />
 
         <!-- Quick Settings Tile for fast copying without leaving KeePass2Android -->
         <service
