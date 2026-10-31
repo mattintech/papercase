@@ -63,6 +63,11 @@
     <color name="on_surface_dark">#E2E2E6</color>
     <color name="on_surface_variant_dark">#C3C6D1</color>
 
+    <!-- Onboarding illustrations -->
+    <color name="onboarding_art_bg">#EEF3FD</color>
+    <color name="onboarding_paper">#FFFFFF</color>
+    <color name="onboarding_navy">#062E6F</color>
+
     <!-- General -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>

@@ -75,6 +75,9 @@ class SecureLockerRepository(private val context: Context) {
         }
     }
 
+    /** True once the locker has been created on this device (even if it's now empty). */
+    fun exists(): Boolean = catalogFile.exists()
+
     /** True when the locker still uses the key that works without authentication. */
     fun needsAuthBoundMigration(): Boolean =
         isDeviceSecure() && catalogKeyVersion() == LockerKeystoreHelper.KEY_VERSION_LEGACY

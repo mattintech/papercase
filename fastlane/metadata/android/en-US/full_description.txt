@@ -6,7 +6,9 @@ No accounts, no servers, no tracking. Your documents never leave your devices un
 <ul>
 <li>Store documents with front and back photos, visas and extra pages.</li>
 <li>Encrypted with a key held in your phone's secure hardware. The locker opens only after you unlock with your fingerprint or PIN, and locks again when you leave.</li>
+<li>Organise documents into folders, each with its own icon or a photo, for example one for each person in your family.</li>
 <li>Give any document its own password for an extra layer.</li>
+<li>Screenshots are blocked, and the locker is hidden in the recent apps screen.</li>
 <li>Location, timestamps and camera details are removed from photos when you add them.</li>
 <li>Copy a document number with one tap, and have the clipboard wiped automatically.</li>
 <li>Get reminded before documents expire. You choose how early for each one, and Papercase keeps reminding you after expiry until you update it.</li>

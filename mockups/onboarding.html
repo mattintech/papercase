@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papercase onboarding mockup</title>
+<style>
+  :root {
+    --font: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --blue: #0B57D0; --navy: #062E6F; --sky: #D3E3FD; --gold: #FFC857;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #F3F4F8; color: #1B1B1F; }
+
+  /* ---------- Page chrome (matches marketing/) ---------- */
+  .top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    padding: 16px 28px; background: #fff; border-bottom: 1px solid #E1E3EA; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand svg { width: 44px; height: 44px; display: block; }
+  .brand h1 { margin: 0; font-size: 19px; }
+  .brand p { margin: 2px 0 0; font-size: 13px; color: #5D6070; }
+  .seg { display: inline-flex; border: 1px solid #C9CCD8; border-radius: 999px; overflow: hidden; }
+  .seg button { font: 600 13px var(--font); padding: 8px 16px; border: 0; background: #fff; color: #1B1B1F; cursor: pointer; }
+  .seg button + button { border-left: 1px solid #C9CCD8; }
+  .seg button.on { background: var(--blue); color: #fff; }
+
+  main { padding: 8px 28px 64px; }
+  h2.section { font-size: 17px; margin: 28px 0 4px; }
+  p.note { margin: 0 0 16px; font-size: 13px; color: #5D6070; max-width: 760px; line-height: 1.45; }
+  .live { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+  .notes { max-width: 420px; font-size: 14px; line-height: 1.5; color: #3A3D4A; }
+  .notes h3 { font-size: 15px; margin: 4px 0 6px; color: #1B1B1F; }
+  .notes ul { margin: 0 0 16px; padding-left: 18px; }
+  .notes li { margin-bottom: 4px; }
+  .strip { display: flex; gap: 24px; flex-wrap: wrap; }
+  .strip .label { font-size: 12px; color: #5D6070; margin-top: 8px; text-align: center; }
+
+  /* ---------- Phone ---------- */
+  .phone { position: relative; width: 340px; height: 720px; border-radius: 46px; padding: 12px;
+    background: linear-gradient(145deg, #2A2D35, #0E0F13 60%); box-shadow: 0 24px 60px rgba(16, 24, 64, .25); flex: none; }
+  .phone.small { width: 255px; height: 540px; border-radius: 36px; padding: 9px; }
+  .phone.small .screen { transform: scale(.75); transform-origin: 0 0; width: 316px; height: 696px; border-radius: 36px; }
+  .screen { position: relative; width: 316px; height: 696px; border-radius: 36px; overflow: hidden; background: var(--surface); color: var(--on-surface); }
+  .cam { position: absolute; top: 22px; left: 50%; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #050608; z-index: 5; }
+  .phone.small .cam { top: 17px; width: 9px; height: 9px; margin-left: -4.5px; }
+
+  /* Material 3 colours, light and dark */
+  .theme-light { --surface: #FDFBFF; --on-surface: #1B1B1F; --on-variant: #44474F; --primary: #0B57D0; --on-primary: #fff;
+    --container: #D3E3FD; --on-container: #041E49; --outline: #C4C6D0; --art-bg: #EEF3FD; --paper: #fff; --card-ink: #0B57D0; }
+  .theme-dark { --surface: #121318; --on-surface: #E3E2E6; --on-variant: #C4C6D0; --primary: #ADC6FF; --on-primary: #062E6F;
+    --container: #284777; --on-container: #D8E2FF; --outline: #44474F; --art-bg: #1D2433; --paper: #E9EEF8; --card-ink: #0B57D0; }
+
+  .sbar { position: absolute; top: 0; left: 0; right: 0; height: 44px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 26px; font-size: 13px; font-weight: 600; color: var(--on-surface); z-index: 4; }
+  .sbar .icons { display: flex; gap: 5px; align-items: center; }
+  .sbar svg { display: block; fill: currentColor; }
+
+  .track { position: absolute; inset: 0; display: flex; transition: transform .35s cubic-bezier(.2, .8, .2, 1); }
+  .slide { flex: none; width: 316px; height: 100%; padding: 96px 24px 0; display: flex; flex-direction: column; }
+  .skip { position: absolute; top: 46px; right: 12px; z-index: 4; font: 500 14px var(--font); color: var(--primary);
+    background: none; border: 0; padding: 10px 12px; cursor: pointer; border-radius: 20px; }
+  .art { height: 280px; border-radius: 28px; background: var(--art-bg); display: flex; align-items: center; justify-content: center; margin-top: 8px; }
+  .art svg { width: 240px; height: 220px; }
+  .title { font-size: 26px; line-height: 32px; font-weight: 500; margin: 28px 4px 10px; letter-spacing: -.01em; }
+  .body { font-size: 15px; line-height: 22px; color: var(--on-variant); margin: 0 4px; }
+
+  .bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 104px; padding: 0 24px 28px; display: flex; align-items: center; justify-content: space-between; z-index: 4; }
+  .dots { display: flex; gap: 8px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--outline); transition: .25s; cursor: pointer; }
+  .dot.on { width: 24px; background: var(--primary); }
+  .next { font: 500 14px var(--font); background: var(--primary); color: var(--on-primary); border: 0; height: 40px; padding: 0 24px;
+    border-radius: 20px; cursor: pointer; }
+  .back { font: 500 14px var(--font); background: none; color: var(--primary); border: 0; height: 40px; padding: 0 12px; border-radius: 20px; cursor: pointer; }
+  .gesture { position: absolute; bottom: 8px; left: 50%; width: 108px; height: 4px; margin-left: -54px; border-radius: 2px; background: var(--on-surface); opacity: .35; z-index: 4; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span id="logo"></span>
+    <div>
+      <h1>Papercase onboarding mockup</h1>
+      <p>Shown once, the first time the app opens. Swipe, use the arrow keys, or tap Next.</p>
+    </div>
+  </div>
+  <div class="seg" id="theme">
+    <button data-theme="light" class="on">Light</button><button data-theme="dark">Dark</button>
+  </div>
+</header>
+
+<main>
+  <h2 class="section">Live preview</h2>
+  <div class="live">
+    <div class="phone" id="live"></div>
+    <div class="notes">
+      <h3>How it behaves</h3>
+      <ul>
+        <li>Shown once, before the app unlocks for the first time. A saved setting stops it showing again.</li>
+        <li>"Skip" on every page jumps straight to the app. The last page's button reads "Get started".</li>
+        <li>Swipe between pages; Back appears from page two.</li>
+        <li>Follows the light or dark appearance setting.</li>
+        <li>Could also be reopened from Settings &gt; About ("How Papercase works").</li>
+      </ul>
+      <h3>Copy</h3>
+      <ul>
+        <li>Wording follows the store listing so the two tell the same story.</li>
+        <li>The last page is the one real warning: removing the screen lock destroys the key, so keep a backup.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="section">All pages</h2>
+  <p class="note">Every page side by side, in the theme chosen above.</p>
+  <div class="strip" id="strip"></div>
+</main>
+
+<script>
+(function () {
+  const ICON = `<svg viewBox="18 18 72 72" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="ic-r"><rect x="18" y="18" width="72" height="72" rx="16"/></clipPath></defs>
+    <g clip-path="url(#ic-r)"><rect width="108" height="108" fill="#0B57D0"/>
+    <g transform="rotate(8 58 44)"><rect x="42" y="27" width="30" height="36" rx="3" fill="#D3E3FD"/></g>
+    <g transform="rotate(-5 50 45)"><rect x="34" y="29" width="31" height="37" rx="3" fill="#fff"/>
+      <rect x="39" y="36" width="17" height="2.6" rx="1.3" fill="#0B57D0" fill-opacity=".6"/>
+      <rect x="39" y="41.5" width="21" height="2.6" rx="1.3" fill="#0B57D0" fill-opacity=".32"/>
+      <rect x="39" y="47" width="14" height="2.6" rx="1.3" fill="#0B57D0" fill-opacity=".32"/></g>
+    <path d="M30,53 H78 V72 A7,7 0 0 1 71,79 H37 A7,7 0 0 1 30,72 Z" fill="#062E6F"/>
+    <path d="M30,53 H78 V57 H30 Z" fill="#0842A0"/>
+    <rect x="48" y="51.5" width="12" height="11.5" rx="3" fill="#FFC857"/>
+    <circle cx="54" cy="57.25" r="1.8" fill="#062E6F"/></g></svg>`;
+  document.getElementById('logo').innerHTML = ICON;
+
+  // ---------- Illustrations: flat shapes in the app's palette, no busy detail ----------
+  const ART = {
+    welcome: `<svg viewBox="0 0 240 220">
+      <g transform="rotate(-8 92 96)"><rect x="40" y="46" width="104" height="132" rx="10" fill="#062E6F"/>
+        <circle cx="92" cy="98" r="20" fill="none" stroke="#FFC857" stroke-width="4"/>
+        <rect x="70" y="138" width="44" height="6" rx="3" fill="#FFC857" opacity=".8"/></g>
+      <g transform="rotate(6 160 120)"><rect x="104" y="78" width="112" height="72" rx="10" fill="var(--paper)"/>
+        <rect x="114" y="90" width="28" height="34" rx="5" fill="#D3E3FD"/>
+        <rect x="150" y="92" width="52" height="6" rx="3" fill="#0B57D0" opacity=".6"/>
+        <rect x="150" y="104" width="40" height="6" rx="3" fill="#0B57D0" opacity=".3"/>
+        <rect x="150" y="116" width="46" height="6" rx="3" fill="#0B57D0" opacity=".3"/>
+        <rect x="114" y="134" width="88" height="5" rx="2.5" fill="#0B57D0" opacity=".2"/></g>
+      <path d="M44,150 H200 V188 A12,12 0 0 1 188,200 H56 A12,12 0 0 1 44,188 Z" fill="#0B57D0"/>
+      <rect x="44" y="150" width="156" height="8" fill="#0842A0"/>
+      <rect x="110" y="146" width="24" height="22" rx="6" fill="#FFC857"/><circle cx="122" cy="157" r="3.5" fill="#062E6F"/></svg>`,
+
+    lock: `<svg viewBox="0 0 240 220">
+      <circle cx="120" cy="104" r="76" fill="var(--container)"/>
+      <g fill="none" stroke="var(--primary)" stroke-width="5" stroke-linecap="round">
+        <path d="M88,92 a32,32 0 0 1 64,0"/>
+        <path d="M80,112 v-14 a40,40 0 0 1 80,0 v6" opacity=".55"/>
+        <path d="M100,132 v-32 a20,20 0 0 1 40,0 v22"/>
+        <path d="M120,96 v40"/>
+        <path d="M112,148 c-6,-8 -8,-20 -8,-34"/>
+        <path d="M140,140 v-8"/></g>
+      <g transform="translate(150 132)"><rect x="0" y="16" width="44" height="36" rx="8" fill="#062E6F"/>
+        <path d="M10,16 v-6 a12,12 0 0 1 24,0 v6" fill="none" stroke="#062E6F" stroke-width="5"/>
+        <circle cx="22" cy="34" r="5" fill="#FFC857"/></g></svg>`,
+
+    folders: `<svg viewBox="0 0 240 220">
+      ${[0, 1, 2].map(i => `<g transform="translate(24 ${26 + i * 58})">
+        <rect width="192" height="48" rx="16" fill="var(--container)"/>
+        <circle cx="26" cy="24" r="15" fill="${['#F2B8A2', '#0B57D0', '#FFC857'][i]}"/>
+        ${i === 0 ? '<circle cx="26" cy="20" r="6" fill="#fff" opacity=".9"/><path d="M15,34 a11,9 0 0 1 22,0" fill="#fff" opacity=".9"/>' : ''}
+        ${i === 1 ? '<path d="M19,19 h6 l2,3 h7 v10 h-15 z" fill="#fff"/>' : ''}
+        ${i === 2 ? '<rect x="20" y="17" width="12" height="15" rx="2" fill="#062E6F"/>' : ''}
+        <rect x="52" y="14" width="${[64, 82, 54][i]}" height="7" rx="3.5" fill="var(--on-container)" opacity=".75"/>
+        <rect x="52" y="28" width="${[92, 70, 80][i]}" height="5" rx="2.5" fill="var(--on-container)" opacity=".35"/>
+        ${i === 0 ? '<rect x="150" y="16" width="32" height="16" rx="8" fill="#B3261E"/><rect x="157" y="22" width="18" height="4" rx="2" fill="#fff"/>' : ''}
+      </g>`).join('')}</svg>`,
+
+    devices: `<svg viewBox="0 0 240 220">
+      <g><rect x="22" y="40" width="70" height="134" rx="14" fill="#062E6F"/><rect x="28" y="48" width="58" height="118" rx="9" fill="var(--paper)"/>
+        <rect x="38" y="76" width="38" height="38" rx="4" fill="#0B57D0" opacity=".85"/>
+        <rect x="44" y="82" width="10" height="10" fill="#fff"/><rect x="60" y="82" width="10" height="10" fill="#fff"/><rect x="44" y="98" width="10" height="10" fill="#fff"/>
+        <rect x="40" y="126" width="34" height="5" rx="2.5" fill="#0B57D0" opacity=".3"/></g>
+      <g><rect x="148" y="40" width="70" height="134" rx="14" fill="#062E6F"/><rect x="154" y="48" width="58" height="118" rx="9" fill="var(--paper)"/>
+        <rect x="164" y="70" width="38" height="24" rx="5" fill="#D3E3FD"/><rect x="164" y="100" width="38" height="24" rx="5" fill="#D3E3FD"/>
+        <rect x="164" y="130" width="26" height="5" rx="2.5" fill="#0B57D0" opacity=".3"/></g>
+      <path d="M96,96 q24,-28 48,0" fill="none" stroke="var(--primary)" stroke-width="4" stroke-dasharray="6 7" stroke-linecap="round"/>
+      <path d="M138,88 l7,9 l-11,2" fill="none" stroke="var(--primary)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <g transform="translate(94 140)"><rect width="52" height="40" rx="8" fill="#FFC857"/>
+        <text x="26" y="25" text-anchor="middle" font-family="Roboto, sans-serif" font-weight="700" font-size="12" fill="#062E6F">.kdbx</text></g></svg>`,
+
+    backup: `<svg viewBox="0 0 240 220">
+      <g transform="rotate(-6 100 110)"><rect x="56" y="34" width="96" height="124" rx="10" fill="var(--paper)"/>
+        <rect x="70" y="52" width="56" height="7" rx="3.5" fill="#0B57D0" opacity=".6"/>
+        <rect x="70" y="68" width="68" height="6" rx="3" fill="#0B57D0" opacity=".3"/>
+        <rect x="70" y="82" width="48" height="6" rx="3" fill="#0B57D0" opacity=".3"/></g>
+      <path d="M150,84 l36,13 v26 c0,24 -16,38 -36,46 c-20,-8 -36,-22 -36,-46 v-26 z" fill="#0B57D0"/>
+      <path d="M134,124 l11,11 l22,-24" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <g transform="translate(36 150)"><circle cx="18" cy="18" r="18" fill="#FFC857"/>
+        <rect x="16" y="8" width="4" height="13" rx="2" fill="#062E6F"/><circle cx="18" cy="27" r="2.5" fill="#062E6F"/></g></svg>`,
+  };
+
+  const SLIDES = [
+    { art: 'welcome', title: 'Your papers, safely cased',
+      body: 'Keep your passport, licence, health card and other documents on your phone, encrypted and ready when you need them.' },
+    { art: 'lock', title: 'Opens only for you',
+      body: 'Unlock with your fingerprint or device PIN. Papercase locks itself when you leave, and screenshots are blocked.' },
+    { art: 'folders', title: 'Organised for the whole family',
+      body: 'Make a folder for each person, give it a photo or an icon, and get reminded before anything expires.' },
+    { art: 'devices', title: 'No cloud. No accounts.',
+      body: 'Nothing leaves your phone unless you send it. Move documents to your other device over Wi-Fi, or back up to a KeePass file.' },
+    { art: 'backup', title: 'Keep a backup',
+      body: 'Your documents are tied to this phone\'s screen lock. If you remove it, they can\'t be opened again. Turn on automatic backups in Settings.' },
+  ];
+
+  const WIFI = 'M12 21 0 8.6C3.3 5.5 7.5 3.8 12 3.8s8.7 1.7 12 4.8z';
+  const SBAR = `<div class="sbar"><span>12:00</span><span class="icons">
+    <svg viewBox="0 0 24 24" style="height:13px"><path d="${WIFI}"/></svg>
+    <svg viewBox="0 0 24 24" style="height:12px"><path d="M2 22h20V2z"/></svg>
+    <svg viewBox="0 0 26 13" style="height:10px"><rect x=".75" y=".75" width="21.5" height="11.5" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2.6" y="2.6" width="17.8" height="7.8" rx="1.8"/><rect x="23.3" y="4.2" width="1.9" height="4.6" rx=".9"/></svg>
+  </span></div>`;
+
+  const slideHtml = (s) => `<div class="slide"><div class="art">${ART[s.art]}</div>
+    <h3 class="title">${s.title}</h3><p class="body">${s.body}</p></div>`;
+
+  function screen(page, interactive) {
+    const last = page === SLIDES.length - 1;
+    return `<div class="cam"></div><div class="screen">${SBAR}
+      ${last ? '' : '<button class="skip">Skip</button>'}
+      <div class="track" style="transform:translateX(${-316 * page}px)">${SLIDES.map(slideHtml).join('')}</div>
+      <div class="bottom">
+        <div class="dots">${SLIDES.map((_, i) => `<span class="dot${i === page ? ' on' : ''}" data-i="${i}"></span>`).join('')}</div>
+        <div>${page > 0 ? '<button class="back">Back</button>' : ''}<button class="next">${last ? 'Get started' : 'Next'}</button></div>
+      </div><div class="gesture"></div></div>`;
+  }
+
+  let theme = 'light';
+  let page = 0;
+  const live = document.getElementById('live');
+  const strip = document.getElementById('strip');
+
+  function renderLive() {
+    live.className = `phone theme-${theme}`;
+    live.innerHTML = screen(page, true);
+  }
+
+  function renderStrip() {
+    strip.innerHTML = SLIDES.map((s, i) => `<div><div class="phone small theme-${theme}">${screen(i, false)}</div>
+      <div class="label">${i + 1}. ${s.title}</div></div>`).join('');
+  }
+
+  function go(p) {
+    page = Math.max(0, Math.min(SLIDES.length - 1, p));
+    renderLive();
+  }
+
+  live.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.classList.contains('next')) go(page === SLIDES.length - 1 ? 0 : page + 1);
+    else if (t.classList.contains('back')) go(page - 1);
+    else if (t.classList.contains('skip')) go(SLIDES.length - 1);
+    else if (t.classList.contains('dot')) go(+t.dataset.i);
+  });
+
+  // Swipe with mouse or touch
+  let startX = null;
+  live.addEventListener('pointerdown', (e) => { startX = e.clientX; });
+  window.addEventListener('pointerup', (e) => {
+    if (startX === null) return;
+    const dx = e.clientX - startX;
+    startX = null;
+    if (Math.abs(dx) > 40) go(page + (dx < 0 ? 1 : -1));
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') go(page + 1);
+    if (e.key === 'ArrowLeft') go(page - 1);
+  });
+
+  document.getElementById('theme').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    theme = b.dataset.theme;
+    document.querySelectorAll('#theme button').forEach(x => x.classList.toggle('on', x === b));
+    renderLive();
+    renderStrip();
+  });
+
+  renderLive();
+  renderStrip();
+})();
+</script>
+</body>
+</html>
