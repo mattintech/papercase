@@ -91,7 +91,7 @@ class ClipboardCountdownService : Service() {
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
@@ -169,6 +169,12 @@ class ClipboardCountdownService : Service() {
             Log.w(TAG, "Failed to update notification: ${e.message}")
         }
     }
+
+    // A short service must stop when Android's time limit is up. The countdown is far shorter, but if
+    // it ever gets here, clear the clipboard now rather than leave it.
+    override fun onTimeout(startId: Int) = stopCountdownAndSelf()
+
+    override fun onTimeout(startId: Int, fgsType: Int) = stopCountdownAndSelf()
 
     override fun onDestroy() {
         super.onDestroy()
