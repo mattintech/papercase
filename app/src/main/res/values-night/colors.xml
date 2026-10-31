@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Onboarding illustrations: navy is lifted so it stands out on the dark background -->
+    <color name="onboarding_art_bg">#1D2433</color>
+    <color name="onboarding_paper">#E9EEF8</color>
+    <color name="onboarding_navy">#3A64B0</color>
+</resources>

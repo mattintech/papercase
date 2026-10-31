@@ -74,6 +74,7 @@ import com.mattintech.papercase.locker.ui.LockerSettingsActivity
 import com.mattintech.papercase.locker.ui.OrientedBitmap
 import com.mattintech.papercase.locker.ui.ThumbnailLoader
 import com.mattintech.papercase.locker.ui.crop.CropActivity
+import com.mattintech.papercase.onboarding.OnboardingActivity
 import com.mattintech.papercase.store.AppUpdatePrompt
 import com.mattintech.papercase.ui.SecureAlertDialogBuilder
 import com.mattintech.papercase.ui.SecureBottomSheetDialog
@@ -265,11 +266,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // Block screenshots and hide vault contents in the recents switcher
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
         prefs = PreferencesManager(this)
         lockerRepository = SecureLockerRepository(this)
+        if (savedInstanceState == null && showOnboardingIfNew()) return
+
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         updatePrompt = AppUpdatePrompt(this, binding.root, binding.bottomNavigation)
 
         setupWindowInsets()
@@ -283,6 +285,23 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             handleIncomingIntent()
         }
+    }
+
+    /**
+     * On a new install, shows the onboarding pages instead (they reopen this screen when done) and
+     * returns true. Only for a plain launch: a transfer link or the quick tile goes straight in.
+     * Anyone who already has a locker or passphrase from an earlier version skips it.
+     */
+    private fun showOnboardingIfNew(): Boolean {
+        if (prefs.hasSeenOnboarding) return false
+        if (lockerRepository.exists() || prefs.hasStoredPassphrase) {
+            prefs.hasSeenOnboarding = true
+            return false
+        }
+        if (intent?.action != Intent.ACTION_MAIN) return false
+        startActivity(Intent(this, OnboardingActivity::class.java))
+        finish()
+        return true
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1368,6 +1387,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Learn more on GitHub") { _, _ ->
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mattintech/papercase")))
             }
+            .setNeutralButton("How it works") { _, _ -> OnboardingActivity.replay(this) }
             .setNegativeButton("Close", null)
             .show()
     }

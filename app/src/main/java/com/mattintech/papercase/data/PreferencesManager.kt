@@ -29,6 +29,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_LOCKER_LAYOUT = "locker_layout"
         private const val KEY_LOCKER_SORT = "locker_sort"
         const val KEY_THEME = "theme"
+        private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
 
         const val NAME = PREF_NAME
 
@@ -103,6 +104,10 @@ class PreferencesManager(context: Context) {
         EXPIRY("Next to expire"),
         NAME("Name (A–Z)")
     }
+
+    var hasSeenOnboarding: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_SEEN, false)
+        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_SEEN, value).apply()
 
     /** Light, dark, or following the system setting; [mode] is the AppCompatDelegate night mode. */
     enum class Theme(val label: String, val mode: Int) {
