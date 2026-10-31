@@ -11,9 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.crypto.BiometricAuthHelper
@@ -23,6 +21,8 @@ import com.mattintech.papercase.locker.model.Folder
 import com.mattintech.papercase.locker.model.FolderTree
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
+import com.mattintech.papercase.ui.SecureAlertDialogBuilder
+import com.mattintech.papercase.ui.SecureBottomSheetDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,7 +45,7 @@ class LockerActions(
     // ---------- Documents ----------
 
     fun showDocumentSheet(doc: SecureDocument, folders: List<Folder>) {
-        val sheet = BottomSheetDialog(activity)
+        val sheet = SecureBottomSheetDialog(activity)
         val list = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, dp(24))
@@ -74,7 +74,7 @@ class LockerActions(
         }
         row(R.drawable.ic_edit, "Edit") { AddDocumentActivity.start(activity, doc.id) }
         row(R.drawable.ic_delete, "Delete", destructive = true) {
-            MaterialAlertDialogBuilder(activity)
+            SecureAlertDialogBuilder(activity)
                 .setTitle("Delete ${doc.title}?")
                 .setMessage("This permanently erases the document and its files from your locker.")
                 .setPositiveButton("Delete") { _, _ -> launch { repository.deleteDocument(doc.id) } }
@@ -114,7 +114,7 @@ class LockerActions(
 
     /** Sharing and saving hand over unencrypted copies; say so first. */
     private fun confirmDecrypted(onConfirm: () -> Unit) {
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle("Share a decrypted copy?")
             .setMessage(
                 "Sharing sends an unencrypted copy. The app you share to, for example WhatsApp, email or " +
@@ -146,7 +146,7 @@ class LockerActions(
 
     private fun askDocumentPassword(doc: SecureDocument, then: (SecretKey?) -> Unit) {
         val input = DialogInput(activity, hint = "Document password", password = true)
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle("Password protected")
             .setMessage("Enter the password for ${doc.title}.")
             .setView(input.view)
@@ -247,7 +247,7 @@ class LockerActions(
                 ) { target -> launch { repository.moveFolder(folder.id, target) } }
                 3 -> {
                     val parentName = FolderTree.path(folders, folder.parentId).lastOrNull()?.name ?: "Locker"
-                    MaterialAlertDialogBuilder(activity)
+                    SecureAlertDialogBuilder(activity)
                         .setTitle("Delete ${folder.name}?")
                         .setMessage("Nothing inside is deleted. Its documents and folders move to $parentName.")
                         .setPositiveButton("Delete folder") { _, _ -> launch { repository.deleteFolder(folder.id) } }
@@ -275,7 +275,7 @@ class LockerActions(
         val input = DialogInput(activity, hint = "Folder name")
         input.editText.setText(initial)
         input.editText.setSelectAllOnFocus(true)
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle(title)
             .setView(input.view)
             .setPositiveButton("Save") { _, _ -> input.text.trim().takeIf { it.isNotEmpty() }?.let(onName) }
@@ -295,7 +295,7 @@ class LockerActions(
             FolderTree.flatten(folders).filter { it.first.id !in exclude }
                 .map { (f, depth) -> f.id to "    ".repeat(depth + 1) + f.name }
         val labels = options.map { (id, label) -> if (id == current) "$label  (current)" else label } + "New folder…"
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle(title)
             .setItems(labels.toTypedArray()) { _, which ->
                 if (which == options.size) {

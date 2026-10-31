@@ -19,7 +19,6 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
-import com.mattintech.papercase.BuildConfig
 import com.mattintech.papercase.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,10 +40,8 @@ class PageViewerDialog(
     private val dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
 
     fun show() {
-        if (!BuildConfig.DEBUG) {
-            // The activity's FLAG_SECURE doesn't cover dialog windows
-            dialog.window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        }
+        // The activity's FLAG_SECURE doesn't cover dialog windows
+        dialog.window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
         val pager = ViewPager2(activity).apply {
             adapter = Adapter()

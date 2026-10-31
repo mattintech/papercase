@@ -9,7 +9,7 @@ import com.google.android.material.textfield.TextInputLayout
 
 /**
  * An outlined Material text field inset to line up with the dialog's title and message,
- * for use with MaterialAlertDialogBuilder.setView().
+ * for use with SecureAlertDialogBuilder.setView().
  */
 class DialogInput(context: Context, hint: String, password: Boolean = false) {
 

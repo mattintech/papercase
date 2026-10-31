@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.appcompat.app.AppCompatActivity
-import com.mattintech.papercase.BuildConfig
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.databinding.ActivityCropBinding
 
@@ -40,9 +39,7 @@ class CropActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!BuildConfig.DEBUG) {
-            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        }
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         binding = ActivityCropBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

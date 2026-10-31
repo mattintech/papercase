@@ -9,13 +9,13 @@ import android.os.Bundle
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.view.View
+import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.data.PreferencesManager
 import com.mattintech.papercase.data.PreferencesManager.LockerLayout
@@ -24,6 +24,7 @@ import com.mattintech.papercase.databinding.ActivityLockerSettingsBinding
 import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.backup.AutoBackupManager.Frequency
 import com.mattintech.papercase.locker.reminders.ReminderNotifier
+import com.mattintech.papercase.ui.SecureAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 /** Automatic backup and expiry reminder settings. Opened from the locker, so the locker key is usable. */
@@ -63,6 +64,8 @@ class LockerSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Block screenshots and hide vault contents in the recents switcher
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         binding = ActivityLockerSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PreferencesManager(this)
@@ -145,7 +148,7 @@ class LockerSettingsActivity : AppCompatActivity() {
             addView(password.view)
             addView(confirm.view)
         }
-        val dialog = MaterialAlertDialogBuilder(this)
+        val dialog = SecureAlertDialogBuilder(this)
             .setTitle(if (AutoBackupManager.hasPassword(this)) "Change backup password" else "Set backup password")
             .setMessage(
                 "You'll need this password to restore a backup, in Papercase or in KeePassXC. " +

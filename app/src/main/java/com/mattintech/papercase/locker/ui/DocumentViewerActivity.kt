@@ -1,6 +1,5 @@
 package com.mattintech.papercase.locker.ui
 
-import com.mattintech.papercase.locker.reminders.ReminderOptions
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -17,7 +16,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.crypto.BiometricAuthHelper
@@ -29,10 +27,12 @@ import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.DocumentAttachment
 import com.mattintech.papercase.locker.model.DocumentIcons
 import com.mattintech.papercase.locker.model.SecureDocument
+import com.mattintech.papercase.locker.reminders.ReminderOptions
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
 import com.mattintech.papercase.locker.ui.pages.PageSource
 import com.mattintech.papercase.locker.ui.pages.PageViewerDialog
 import com.mattintech.papercase.locker.ui.pages.PdfPages
+import com.mattintech.papercase.ui.SecureAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,13 +64,8 @@ class DocumentViewerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Block screenshots in release builds; allow in debug builds for layout inspection
-        if (!com.mattintech.papercase.BuildConfig.DEBUG) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-        }
+        // Block screenshots and hide contents in the recents switcher
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
         binding = ActivityDocumentViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -181,7 +176,7 @@ class DocumentViewerActivity : AppCompatActivity() {
     private fun promptPasswordToView(doc: SecureDocument) {
         val input = DialogInput(this, hint = "Document password", password = true)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Password Protected")
             .setMessage("This document is protected with a custom password. Enter it to view details:")
             .setView(input.view)
@@ -403,7 +398,7 @@ class DocumentViewerActivity : AppCompatActivity() {
      * keeps it unprotected, outside the locker. Say so before going ahead.
      */
     private fun confirmDecryptedShare(onConfirm: () -> Unit) {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Share a decrypted copy?")
             .setMessage(
                 "Sharing sends an unencrypted copy. The app you share to, for example WhatsApp, " +
@@ -520,7 +515,7 @@ class DocumentViewerActivity : AppCompatActivity() {
     }
 
     private fun showDeleteConfirmDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Delete Document?")
             .setMessage("This will permanently erase this document and all its encrypted attachments from your locker. This cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->

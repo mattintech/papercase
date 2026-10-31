@@ -11,9 +11,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
 import com.mattintech.papercase.locker.model.DocumentIcons
+import com.mattintech.papercase.ui.SecureBottomSheetDialog
 
 /**
  * Bottom sheet for choosing an icon and its colour. A blank icon key means [defaultIcon] (the
@@ -27,7 +27,7 @@ class IconPickerSheet(
     private val onDone: ((iconKey: String, colourKey: String) -> Unit)? = null,
     private val onChanged: (iconKey: String, colourKey: String) -> Unit = { _, _ -> }
 ) {
-    private val dialog = BottomSheetDialog(context)
+    private val dialog = SecureBottomSheetDialog(context)
     private val iconGrid = GridLayout(context).apply { columnCount = COLUMNS }
     private val colourRow = GridLayout(context).apply { columnCount = COLUMNS }
 
