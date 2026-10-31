@@ -1,0 +1,2 @@
+New in 1.2.1:
+- The clipboard countdown now runs as a short background task, so Papercase no longer needs a special system permission to keep it going
