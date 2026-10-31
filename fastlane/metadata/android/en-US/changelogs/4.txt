@@ -1,0 +1,5 @@
+New in 1.2:
+- Give a folder a photo, like your child's face, instead of an icon
+- Choose a light or dark theme, or follow your phone
+- A short introduction the first time you open the app
+- Screenshots are now blocked everywhere, and the locker is hidden in the recent apps screen
