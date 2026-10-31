@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Onboarding illustration -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp" android:height="220dp" android:viewportWidth="240" android:viewportHeight="220">
+    <path android:pathData="M44,104 A76,76 0 1 1 196,104 A76,76 0 1 1 44,104 Z" android:fillColor="?attr/colorPrimaryContainer" />
+    <path android:pathData="M88,92 a32,32 0 0 1 64,0" android:strokeColor="?attr/colorPrimary" android:strokeWidth="5" android:strokeLineCap="round" />
+    <path android:pathData="M80,112 v-14 a40,40 0 0 1 80,0 v6" android:strokeColor="?attr/colorPrimary" android:strokeWidth="5" android:strokeLineCap="round" android:strokeAlpha="0.55" />
+    <path android:pathData="M100,132 v-32 a20,20 0 0 1 40,0 v22" android:strokeColor="?attr/colorPrimary" android:strokeWidth="5" android:strokeLineCap="round" />
+    <path android:pathData="M120,96 v40" android:strokeColor="?attr/colorPrimary" android:strokeWidth="5" android:strokeLineCap="round" />
+    <path android:pathData="M112,148 c-6,-8 -8,-20 -8,-34" android:strokeColor="?attr/colorPrimary" android:strokeWidth="5" android:strokeLineCap="round" />
+    <path android:pathData="M140,140 v-8" android:strokeColor="?attr/colorPrimary" android:strokeWidth="5" android:strokeLineCap="round" />
+    <group android:rotation="0" android:pivotX="0" android:pivotY="0" android:translateX="150" android:translateY="132"><path android:pathData="M8,16 H36 A8,8 0 0 1 44,24 V44 A8,8 0 0 1 36,52 H8 A8,8 0 0 1 0,44 V24 A8,8 0 0 1 8,16 Z" android:fillColor="@color/onboarding_navy" /><path android:pathData="M10,16 v-6 a12,12 0 0 1 24,0 v6" android:strokeColor="@color/onboarding_navy" android:strokeWidth="5" android:strokeLineCap="round" /><path android:pathData="M17,34 A5,5 0 1 1 27,34 A5,5 0 1 1 17,34 Z" android:fillColor="#FFC857" /></group>
+</vector>

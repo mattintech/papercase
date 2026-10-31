@@ -49,6 +49,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".onboarding.OnboardingActivity"
+            android:exported="false" />
+
         <!-- Secure Document Locker Activities -->
         <activity
             android:name=".locker.ui.AddDocumentActivity"

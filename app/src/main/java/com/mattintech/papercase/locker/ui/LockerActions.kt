@@ -1,6 +1,7 @@
 package com.mattintech.papercase.locker.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.view.View
 import android.widget.ImageView
@@ -11,18 +12,19 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.crypto.BiometricAuthHelper
 import com.mattintech.papercase.locker.crypto.DocumentPasswordCrypto
 import com.mattintech.papercase.locker.model.AttachmentSlot
 import com.mattintech.papercase.locker.model.Folder
+import com.mattintech.papercase.locker.model.FolderPhoto
 import com.mattintech.papercase.locker.model.FolderTree
 import com.mattintech.papercase.locker.model.SecureDocument
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
+import com.mattintech.papercase.ui.SecureAlertDialogBuilder
+import com.mattintech.papercase.ui.SecureBottomSheetDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,18 +36,20 @@ import javax.crypto.SecretKey
  * device, move, edit, delete), folder options, and the folder picker.
  *
  * [pickSaveFolder] opens the system folder picker and calls back with the chosen folder.
+ * [pickPhoto] opens the camera (or the gallery), then the crop screen, and calls back with the photo.
  */
 class LockerActions(
     private val activity: AppCompatActivity,
     private val repository: SecureLockerRepository,
     private val pickSaveFolder: (onPicked: (Uri) -> Unit) -> Unit,
+    private val pickPhoto: (camera: Boolean, onPicked: (Bitmap) -> Unit) -> Unit,
     private val onChanged: () -> Unit
 ) {
 
     // ---------- Documents ----------
 
     fun showDocumentSheet(doc: SecureDocument, folders: List<Folder>) {
-        val sheet = BottomSheetDialog(activity)
+        val sheet = SecureBottomSheetDialog(activity)
         val list = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, dp(24))
@@ -74,7 +78,7 @@ class LockerActions(
         }
         row(R.drawable.ic_edit, "Edit") { AddDocumentActivity.start(activity, doc.id) }
         row(R.drawable.ic_delete, "Delete", destructive = true) {
-            MaterialAlertDialogBuilder(activity)
+            SecureAlertDialogBuilder(activity)
                 .setTitle("Delete ${doc.title}?")
                 .setMessage("This permanently erases the document and its files from your locker.")
                 .setPositiveButton("Delete") { _, _ -> launch { repository.deleteDocument(doc.id) } }
@@ -114,7 +118,7 @@ class LockerActions(
 
     /** Sharing and saving hand over unencrypted copies; say so first. */
     private fun confirmDecrypted(onConfirm: () -> Unit) {
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle("Share a decrypted copy?")
             .setMessage(
                 "Sharing sends an unencrypted copy. The app you share to, for example WhatsApp, email or " +
@@ -146,7 +150,7 @@ class LockerActions(
 
     private fun askDocumentPassword(doc: SecureDocument, then: (SecretKey?) -> Unit) {
         val input = DialogInput(activity, hint = "Document password", password = true)
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle("Password protected")
             .setMessage("Enter the password for ${doc.title}.")
             .setView(input.view)
@@ -229,17 +233,23 @@ class LockerActions(
     fun showFolderMenu(folder: Folder, anchor: View, folders: List<Folder>) {
         val popup = PopupMenu(activity, anchor)
         popup.menu.add(0, 1, 0, "Rename")
-        popup.menu.add(0, 4, 1, "Change icon")
+        popup.menu.add(0, 4, 1, "Change icon or photo")
         popup.menu.add(0, 2, 2, "Move")
         popup.menu.add(0, 3, 3, "Delete")
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> promptFolderName("Rename folder", folder.name) { name -> launch { repository.saveFolder(folder.copy(name = name)) } }
-                4 -> IconPickerSheet(activity, R.drawable.ic_folder, folder.iconKey, folder.iconColor, onDone = { key, colour ->
-                    if (key != folder.iconKey || colour != folder.iconColor) {
-                        launch { repository.saveFolder(folder.copy(iconKey = key, iconColor = colour)) }
-                    }
-                }).show()
+                4 -> IconPickerSheet(
+                    activity, R.drawable.ic_folder, folder.iconKey, folder.iconColor,
+                    // Picking an icon or colour replaces the photo
+                    onDone = { key, colour ->
+                        if (key != folder.iconKey || colour != folder.iconColor) {
+                            launch { repository.saveFolder(folder.copy(iconKey = key, iconColor = colour, photo = "")) }
+                        }
+                    },
+                    hasPhoto = folder.photo.isNotEmpty(),
+                    onPhoto = { action -> changeFolderPhoto(folder, action) }
+                ).show()
                 2 -> pickFolder(
                     folders, title = "Move ${folder.name} to",
                     exclude = FolderTree.subtree(folders, folder.id),
@@ -247,7 +257,7 @@ class LockerActions(
                 ) { target -> launch { repository.moveFolder(folder.id, target) } }
                 3 -> {
                     val parentName = FolderTree.path(folders, folder.parentId).lastOrNull()?.name ?: "Locker"
-                    MaterialAlertDialogBuilder(activity)
+                    SecureAlertDialogBuilder(activity)
                         .setTitle("Delete ${folder.name}?")
                         .setMessage("Nothing inside is deleted. Its documents and folders move to $parentName.")
                         .setPositiveButton("Delete folder") { _, _ -> launch { repository.deleteFolder(folder.id) } }
@@ -258,6 +268,21 @@ class LockerActions(
             true
         }
         popup.show()
+    }
+
+    private fun changeFolderPhoto(folder: Folder, action: IconPickerSheet.PhotoAction) {
+        if (action == IconPickerSheet.PhotoAction.REMOVE) {
+            launch { repository.saveFolder(folder.copy(photo = "")) }
+            return
+        }
+        pickPhoto(action == IconPickerSheet.PhotoAction.TAKE) { bitmap ->
+            launch {
+                val photo = withContext(Dispatchers.Default) { FolderPhoto.encode(bitmap) }
+                // Re-read so a change made while the camera was open isn't lost
+                val current = repository.getFolders().find { it.id == folder.id } ?: return@launch
+                repository.saveFolder(current.copy(photo = photo))
+            }
+        }
     }
 
     fun promptNewFolder(parentId: String, onCreated: (Folder) -> Unit = {}) {
@@ -275,7 +300,7 @@ class LockerActions(
         val input = DialogInput(activity, hint = "Folder name")
         input.editText.setText(initial)
         input.editText.setSelectAllOnFocus(true)
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle(title)
             .setView(input.view)
             .setPositiveButton("Save") { _, _ -> input.text.trim().takeIf { it.isNotEmpty() }?.let(onName) }
@@ -295,7 +320,7 @@ class LockerActions(
             FolderTree.flatten(folders).filter { it.first.id !in exclude }
                 .map { (f, depth) -> f.id to "    ".repeat(depth + 1) + f.name }
         val labels = options.map { (id, label) -> if (id == current) "$label  (current)" else label } + "New folder…"
-        MaterialAlertDialogBuilder(activity)
+        SecureAlertDialogBuilder(activity)
             .setTitle(title)
             .setItems(labels.toTypedArray()) { _, which ->
                 if (which == options.size) {

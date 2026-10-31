@@ -14,12 +14,14 @@ import android.provider.Settings
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -29,9 +31,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.mattintech.papercase.auth.SessionManager
@@ -66,12 +66,18 @@ import com.mattintech.papercase.locker.transfer.VaultConflictReport
 import com.mattintech.papercase.locker.transfer.VaultExportImportManager
 import com.mattintech.papercase.locker.ui.AddDocumentActivity
 import com.mattintech.papercase.locker.ui.DocumentViewerActivity
+import com.mattintech.papercase.locker.ui.ImageMetadataStripper
 import com.mattintech.papercase.locker.ui.LockerActions
 import com.mattintech.papercase.locker.ui.LockerAdapter
 import com.mattintech.papercase.locker.ui.LockerItem
 import com.mattintech.papercase.locker.ui.LockerSettingsActivity
+import com.mattintech.papercase.locker.ui.OrientedBitmap
 import com.mattintech.papercase.locker.ui.ThumbnailLoader
+import com.mattintech.papercase.locker.ui.crop.CropActivity
+import com.mattintech.papercase.onboarding.OnboardingActivity
 import com.mattintech.papercase.store.AppUpdatePrompt
+import com.mattintech.papercase.ui.SecureAlertDialogBuilder
+import com.mattintech.papercase.ui.SecureBottomSheetDialog
 import java.io.File
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +115,63 @@ class MainActivity : AppCompatActivity() {
             val callback = onSaveFolderPicked
             onSaveFolderPicked = null
             if (uri != null) callback?.invoke(uri)
+        }
+
+    // Folder photo: camera or gallery, then the crop screen
+    private var onFolderPhotoPicked: ((android.graphics.Bitmap) -> Unit)? = null
+    private var folderPhotoFile: File? = null
+
+    private val folderPhotoCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) launchFolderPhotoCamera() else {
+                onFolderPhotoPicked = null
+                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private val folderPhotoCameraLauncher =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
+            val file = folderPhotoFile ?: return@registerForActivityResult
+            folderPhotoFile = null
+            lifecycleScope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    try {
+                        if (success && file.exists()) file.readBytes() else null
+                    } finally {
+                        file.delete()
+                    }
+                }
+                if (bytes != null) cropFolderPhoto(bytes) else onFolderPhotoPicked = null
+            }
+        }
+
+    private val folderPhotoGalleryLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            SessionManager.isExternalOperationActive = false
+            SessionManager.keepAlive()
+            if (uri == null) {
+                onFolderPhotoPicked = null
+                return@registerForActivityResult
+            }
+            lifecycleScope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                }
+                if (bytes != null) cropFolderPhoto(bytes) else {
+                    onFolderPhotoPicked = null
+                    Toast.makeText(this@MainActivity, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+    private val folderPhotoCropLauncher =
+        registerForActivityResult(CropActivity.Contract()) { bitmap ->
+            SessionManager.keepAlive()
+            val callback = onFolderPhotoPicked
+            onFolderPhotoPicked = null
+            if (bitmap != null) callback?.invoke(bitmap)
         }
 
     // Back goes up a folder before leaving the app
@@ -201,11 +264,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
+        // Block screenshots and hide vault contents in the recents switcher
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         prefs = PreferencesManager(this)
         lockerRepository = SecureLockerRepository(this)
+        if (savedInstanceState == null && showOnboardingIfNew()) return
+
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         updatePrompt = AppUpdatePrompt(this, binding.root, binding.bottomNavigation)
 
         setupWindowInsets()
@@ -219,6 +285,23 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             handleIncomingIntent()
         }
+    }
+
+    /**
+     * On a new install, shows the onboarding pages instead (they reopen this screen when done) and
+     * returns true. Only for a plain launch: a transfer link or the quick tile goes straight in.
+     * Anyone who already has a locker or passphrase from an earlier version skips it.
+     */
+    private fun showOnboardingIfNew(): Boolean {
+        if (prefs.hasSeenOnboarding) return false
+        if (lockerRepository.exists() || prefs.hasStoredPassphrase) {
+            prefs.hasSeenOnboarding = true
+            return false
+        }
+        if (intent?.action != Intent.ACTION_MAIN) return false
+        startActivity(Intent(this, OnboardingActivity::class.java))
+        finish()
+        return true
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -336,7 +419,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUnsupportedTransferCodeDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Can't use this code")
             .setMessage("This transfer code isn't supported. Make sure Papercase is up to date on both devices, then start a new transfer.")
             .setPositiveButton("OK", null)
@@ -346,7 +429,7 @@ class MainActivity : AppCompatActivity() {
     /** Receiving is only allowed on devices with a screen lock, so the imported vault is never left open. */
     private fun ensureDeviceProtectedForReceive(): Boolean {
         if (BiometricAuthHelper.getDeviceSecurityLevel(this).isProtected) return true
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Screen lock required")
             .setMessage("This device has no PIN, pattern, password, or fingerprint. Set up a screen lock before receiving documents, so they can't be opened by anyone who picks up the device.")
             .setPositiveButton("Open Settings") { _, _ ->
@@ -367,7 +450,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun confirmReceiveFromLink(target: P2pTarget) {
         if (!ensureDeviceProtectedForReceive()) return
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Receive documents?")
             .setMessage("Receive a vault from the device at ${target.ip}.\n\nOnly continue if you just scanned the QR code on your own device.")
             .setPositiveButton("Continue") { _, _ -> withLocalNetworkAccess { startP2pReceiverFlow(target) } }
@@ -467,7 +550,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSamsungClipboardDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Samsung Clipboard History")
             .setMessage(
                 "Samsung One UI maintains an internal clipboard history tray in Samsung Keyboard that retains copied text even after Papercase wipes the Android clipboard.\n\n" +
@@ -570,6 +653,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun launchFolderPhotoCamera() {
+        try {
+            val dir = File(cacheDir, "camera").apply { if (!exists()) mkdirs() }
+            val file = File(dir, "folder_${System.currentTimeMillis()}.jpg")
+            folderPhotoFile = file
+            SessionManager.isExternalOperationActive = true
+            folderPhotoCameraLauncher.launch(FileProvider.getUriForFile(this, "$packageName.fileprovider", file))
+        } catch (e: Exception) {
+            SessionManager.isExternalOperationActive = false
+            folderPhotoFile = null
+            onFolderPhotoPicked = null
+            Toast.makeText(this, "Could not open camera: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Decodes a photo upright and at a manageable size, then opens the crop screen to frame it. */
+    private suspend fun cropFolderPhoto(bytes: ByteArray) {
+        val bitmap = withContext(Dispatchers.Default) { OrientedBitmap.decode(bytes)?.let(ImageMetadataStripper::shrink) }
+        if (bitmap != null) {
+            folderPhotoCropLauncher.launch(bitmap)
+        } else {
+            onFolderPhotoPicked = null
+            Toast.makeText(this, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun setupLocker() {
         thumbnailLoader = ThumbnailLoader(lockerRepository)
         lockerActions = LockerActions(
@@ -579,6 +688,20 @@ class MainActivity : AppCompatActivity() {
                 onSaveFolderPicked = onPicked
                 SessionManager.isExternalOperationActive = true
                 pickSaveFolderLauncher.launch(null)
+            },
+            pickPhoto = { camera, onPicked ->
+                onFolderPhotoPicked = onPicked
+                when {
+                    !camera -> {
+                        SessionManager.isExternalOperationActive = true
+                        folderPhotoGalleryLauncher.launch(
+                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED ->
+                        launchFolderPhotoCamera()
+                    else -> folderPhotoCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
             },
             onChanged = { loadSecureLockerDocuments() }
         )
@@ -873,7 +996,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLockerHardwareBoundDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Locker upgraded")
             .setMessage(
                 "Your documents can now only be decrypted after you unlock with your fingerprint or PIN.\n\n" +
@@ -891,7 +1014,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLockerKeyLostDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Locker can't be opened")
             .setMessage(
                 "Android deleted the locker key, usually because the screen lock was removed or reset. " +
@@ -1006,7 +1129,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUnprotectedDeviceDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Device Not Protected")
             .setMessage("This device has no PIN, pattern, password, or biometric lock set up.\n\nWithout a screen lock, Android Keystore cannot enforce hardware user authentication. To protect your vault, please configure a screen lock in Android Settings.")
             .setPositiveButton("Open Settings") { _, _ ->
@@ -1129,7 +1252,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSetPassphraseDialog() {
         val dialogBinding = DialogSetPassphraseBinding.inflate(layoutInflater)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle(R.string.btn_set_passphrase)
             .setView(dialogBinding.root)
             .setPositiveButton(R.string.btn_save) { _, _ ->
@@ -1194,7 +1317,7 @@ class MainActivity : AppCompatActivity() {
         val dialogBinding = DialogViewPassphraseBinding.inflate(layoutInflater)
         dialogBinding.tvDecryptedPassphrase.text = passphrase
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle(R.string.biometric_view_title)
             .setView(dialogBinding.root)
             .setPositiveButton("Copy") { _, _ ->
@@ -1207,7 +1330,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDeleteConfirmDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Remove Passphrase?")
             .setMessage("This will erase the stored passphrase and destroy the hardware encryption key from Android Keystore. This cannot be undone.")
             .setPositiveButton("Remove") { _, _ ->
@@ -1222,7 +1345,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showKeyInvalidatedDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Biometric Key Invalidated")
             .setMessage("Android detected a change to your enrolled fingerprints. For your security, the hardware key was invalidated. Please re-enter and save your passphrase.")
             .setPositiveButton("Re-enter Passphrase") { _, _ ->
@@ -1242,7 +1365,7 @@ class MainActivity : AppCompatActivity() {
                 "Device security authentication is currently unavailable."
         }
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Screen Lock Required")
             .setMessage(message)
             .setPositiveButton("Open Settings") { _, _ ->
@@ -1259,18 +1382,19 @@ class MainActivity : AppCompatActivity() {
     private fun showAboutDialog() {
         val aboutView = layoutInflater.inflate(R.layout.dialog_about, null)
         aboutView.findViewById<TextView>(R.id.tvAboutVersion).text = "Version ${BuildConfig.VERSION_NAME}"
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setView(aboutView)
             .setPositiveButton("Learn more on GitHub") { _, _ ->
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mattintech/papercase")))
             }
+            .setNeutralButton("How it works") { _, _ -> OnboardingActivity.replay(this) }
             .setNegativeButton("Close", null)
             .show()
     }
 
     private fun showVaultTransferOptions() {
         val sheetBinding = DialogVaultTransferBottomSheetBinding.inflate(layoutInflater)
-        val bottomSheet = BottomSheetDialog(this)
+        val bottomSheet = SecureBottomSheetDialog(this)
         bottomSheet.setContentView(sheetBinding.root)
         bottomSheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
 
@@ -1318,7 +1442,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLocalNetworkPermissionRequired() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Nearby devices permission needed")
             .setMessage("Wi-Fi transfer connects directly to your other device on the local network. Allow Papercase to find and connect to nearby devices to use it.\n\nYou can still move documents with a backup file instead.")
             .setPositiveButton("Open Settings") { _, _ ->
@@ -1333,7 +1457,7 @@ class MainActivity : AppCompatActivity() {
     private fun startP2pSendFlow() {
         val ip = P2pNetworkHelper.getLocalWifiIpAddress()
         if (ip == null) {
-            MaterialAlertDialogBuilder(this)
+            SecureAlertDialogBuilder(this)
                 .setTitle("Wi-Fi Connection Required")
                 .setMessage("Could not detect a local Wi-Fi IP address. Please ensure your device is connected to Wi-Fi so the receiving device can reach it.")
                 .setPositiveButton("OK", null)
@@ -1347,7 +1471,7 @@ class MainActivity : AppCompatActivity() {
     /** Asks the sender to approve a connected receiver, then authenticate (fingerprint or PIN). */
     private suspend fun approveP2pReceiver(receiverName: String, receiverAddress: String): Boolean {
         val approved = suspendCancellableCoroutine { cont ->
-            val dialog = MaterialAlertDialogBuilder(this)
+            val dialog = SecureAlertDialogBuilder(this)
                 .setTitle("Send your vault?")
                 .setMessage("$receiverName ($receiverAddress) wants to receive your locker.\n\nOnly allow this if it's your device.")
                 .setCancelable(false)
@@ -1387,7 +1511,7 @@ class MainActivity : AppCompatActivity() {
                 activeP2pServer?.stop()
 
                 val dialogBinding = DialogP2pSenderBinding.inflate(layoutInflater)
-                val dialog = MaterialAlertDialogBuilder(this@MainActivity)
+                val dialog = SecureAlertDialogBuilder(this@MainActivity)
                     .setTitle("Send Vault to Nearby Device")
                     .setView(dialogBinding.root)
                     .setNegativeButton("Cancel") { d, _ ->
@@ -1533,7 +1657,7 @@ class MainActivity : AppCompatActivity() {
     private fun startP2pReceiverFlow(target: P2pTarget) {
         val (ip, port) = target.ip to target.port
         val sessionKeys = P2pSessionKeys(target.transferKey)
-        val progressDialog = MaterialAlertDialogBuilder(this)
+        val progressDialog = SecureAlertDialogBuilder(this)
             .setTitle("Receiving Encrypted Vault")
             .setMessage("Connecting to $ip:$port...\n\nApprove the transfer on the sending device.")
             .setCancelable(false)
@@ -1572,7 +1696,7 @@ class MainActivity : AppCompatActivity() {
                 showConflictResolutionOrCommit(report)
             } catch (e: Exception) {
                 progressDialog.dismiss()
-                MaterialAlertDialogBuilder(this@MainActivity)
+                SecureAlertDialogBuilder(this@MainActivity)
                     .setTitle("Transfer Failed")
                     .setMessage(e.message ?: "Failed to receive vault from nearby device.")
                     .setPositiveButton("OK", null)
@@ -1607,7 +1731,7 @@ class MainActivity : AppCompatActivity() {
 
         if (!report.hasConflicts) {
             // No conflicts! Direct import
-            MaterialAlertDialogBuilder(this)
+            SecureAlertDialogBuilder(this)
                 .setTitle("Import Vault")
                 .setMessage("Incoming vault contains:\n\n• ${report.newDocuments.size} New documents\n$deletedLine• ${report.identicalDocuments.size} Already up-to-date\n\nApply these changes?")
                 .setPositiveButton("Import") { _, _ ->
@@ -1632,7 +1756,7 @@ class MainActivity : AppCompatActivity() {
             "• ${report.identicalDocuments.size} Identical documents\n\n" +
             "Conflicting Documents:\n$conflictDocTitles$moreText"
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Sync Conflicts Detected")
             .setView(dialogBinding.root)
             .setPositiveButton("Apply") { _, _ ->
@@ -1661,7 +1785,7 @@ class MainActivity : AppCompatActivity() {
                 loadSecureLockerDocuments()
                 restoreBackupExtras(report, replaced = strategy == ConflictResolutionStrategy.REPLACE_ALL)
             } catch (e: Exception) {
-                MaterialAlertDialogBuilder(this@MainActivity)
+                SecureAlertDialogBuilder(this@MainActivity)
                     .setTitle("Import Error")
                     .setMessage(e.message ?: "Failed to commit vault documents.")
                     .setPositiveButton("OK", null)
@@ -1686,7 +1810,7 @@ class MainActivity : AppCompatActivity() {
 
         val passphrase = extras.passphrase ?: return
         if (prefs.hasStoredPassphrase) return
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Restore passphrase?")
             .setMessage("This backup includes your master passphrase. Save it on this phone?")
             .setPositiveButton(R.string.btn_save) { _, _ -> savePassphraseWithBiometrics(passphrase) }
@@ -1778,7 +1902,7 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(helpTextView)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Encrypted Vault Exported")
             .setView(layout)
             .setPositiveButton("Done", null)
@@ -1851,7 +1975,7 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(btnScanQr)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Unlock backup")
             .setMessage("Enter the token shown when the backup was exported (or scan its QR code). For automatic backups, enter your backup password.")
             .setView(layout)
@@ -1873,7 +1997,7 @@ class MainActivity : AppCompatActivity() {
                 val report = VaultExportImportManager.prepareVaultImport(this@MainActivity, lockerRepository, fileUri, token)
                 showConflictResolutionOrCommit(report)
             } catch (e: Exception) {
-                MaterialAlertDialogBuilder(this@MainActivity)
+                SecureAlertDialogBuilder(this@MainActivity)
                     .setTitle("Import Failed")
                     .setMessage(e.message ?: "Could not decrypt vault backup.")
                     .setPositiveButton("OK", null)

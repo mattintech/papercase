@@ -23,7 +23,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.datepicker.MaterialDatePicker
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mattintech.papercase.R
 import com.mattintech.papercase.auth.SessionManager
 import com.mattintech.papercase.crypto.BiometricAuthHelper
@@ -42,6 +41,7 @@ import com.mattintech.papercase.locker.reminders.ExpiryDates
 import com.mattintech.papercase.locker.reminders.ReminderOptions
 import com.mattintech.papercase.locker.repository.SecureLockerRepository
 import com.mattintech.papercase.locker.ui.crop.CropActivity
+import com.mattintech.papercase.ui.SecureAlertDialogBuilder
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
@@ -242,13 +242,8 @@ class AddDocumentActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Prevent screenshots in release builds; allow in debug builds for layout inspection
-        if (!com.mattintech.papercase.BuildConfig.DEBUG) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-        }
+        // Block screenshots and hide contents in the recents switcher
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
         binding = ActivityAddDocumentBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -413,7 +408,7 @@ class AddDocumentActivity : AppCompatActivity() {
             binding.etTitle.text?.isNotBlank() == true
 
     private fun askAboutReminders() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Get expiry reminders?")
             .setMessage(
                 "Papercase can send you a notification before your documents expire, so you have time to renew them. " +
@@ -483,7 +478,7 @@ class AddDocumentActivity : AppCompatActivity() {
     private fun promptPasswordToEdit(doc: SecureDocument) {
         val input = DialogInput(this, hint = "Document password", password = true)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Password Protected")
             .setMessage("This document is protected with a custom password. Enter it to edit:")
             .setView(input.view)
@@ -637,7 +632,7 @@ class AddDocumentActivity : AppCompatActivity() {
         input.editText.setText("Visa ${visaAttachments.size + 1}")
         input.editText.setSelectAllOnFocus(true)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Add Passport Visa")
             .setMessage("Enter a label for this visa or travel permit:")
             .setView(input.view)
@@ -654,7 +649,7 @@ class AddDocumentActivity : AppCompatActivity() {
     }
 
     private fun showAddOtherPhotoDialog() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Add page ${pageCount() + 1}")
             .setItems(arrayOf("Take photo", "Choose from gallery")) { _, which ->
                 if (which == 0) {
@@ -669,7 +664,7 @@ class AddDocumentActivity : AppCompatActivity() {
 
     /** After each page: keep going for multi-page documents. */
     private fun promptNextPage() {
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Page ${pageCount()} added")
             .setMessage("Add the next page of this document?")
             .setPositiveButton("Take photo") { _, _ -> captureFromCamera(AttachmentSlot.OTHER) }
@@ -688,7 +683,7 @@ class AddDocumentActivity : AppCompatActivity() {
         input.editText.setText(item.customTitle.ifBlank { "Visa" })
         input.editText.setSelectAllOnFocus(true)
 
-        MaterialAlertDialogBuilder(this)
+        SecureAlertDialogBuilder(this)
             .setTitle("Rename Visa")
             .setView(input.view)
             .setPositiveButton("Save") { _, _ ->

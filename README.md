@@ -17,6 +17,13 @@ Keep your passport, driver's licence, health card and other papers on your phone
 No accounts. No servers. No tracking. Your documents never leave your devices unless you send them.
 
 <p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.mattintech.papercase"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
+  <a href="https://f-droid.org/packages/com.mattintech.papercase/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="80" alt="Get it on F-Droid"></a>
+  <br>
+  <a href="https://www.buymeacoffee.com/mattintech"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="44" alt="Buy Me a Coffee"></a>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/locker.png" width="270" alt="Locker with documents">
   &nbsp;
   <img src="docs/screenshots/locked.png" width="200" alt="Locked locker">
@@ -100,6 +107,10 @@ Debug builds install as a separate app, "Papercase Debug" (`com.mattintech.paper
 ## Moving from SecurePass
 
 Papercase was previously called SecurePass. It's a new app ID, so data doesn't carry over automatically. In SecurePass, export a backup file, then use **Import Backup File** in Papercase with the same token. Older `.spvault` backups import too.
+
+## Support development
+
+Papercase is free, with no ads and no tracking, and it always will be. If it's useful to you and you'd like to help cover the costs of development, you can [buy me a coffee](https://www.buymeacoffee.com/mattintech). Thank you.
 
 ## Contributing
 

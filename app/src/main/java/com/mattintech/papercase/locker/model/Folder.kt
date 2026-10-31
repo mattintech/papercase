@@ -12,6 +12,8 @@ data class Folder(
     /** Optional icon and colour ([DocumentIcons] keys); blank = the plain folder icon. */
     val iconKey: String = "",
     val iconColor: String = "",
+    /** Optional photo shown instead of the icon (base64 JPEG from [FolderPhoto]); blank = none. */
+    val photo: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -21,6 +23,7 @@ data class Folder(
         put("parentId", parentId)
         put("iconKey", iconKey)
         put("iconColor", iconColor)
+        put("photo", photo)
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
     }
@@ -32,6 +35,7 @@ data class Folder(
             parentId = json.optString("parentId", ""),
             iconKey = json.optString("iconKey", ""),
             iconColor = json.optString("iconColor", ""),
+            photo = json.optString("photo", ""),
             createdAt = json.optLong("createdAt", System.currentTimeMillis()),
             updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
         )
