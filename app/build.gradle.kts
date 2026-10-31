@@ -14,8 +14,8 @@ android {
         targetSdk = 37
         // Used by local and F-Droid builds. The Google Play release workflow overrides
         // both with -PversionName (from the git tag) and -PversionCode (next free code on Play).
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
         providers.gradleProperty("versionCode").orNull?.let { versionCode = it.toInt() }
         providers.gradleProperty("versionName").orNull?.let { versionName = it }
 
