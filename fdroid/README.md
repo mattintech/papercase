@@ -4,15 +4,21 @@ F-Droid builds Papercase from source and signs it with its own key. The store li
 (title, descriptions, icon, screenshots, changelogs) is read from
 [`fastlane/metadata/android`](../fastlane/metadata/android) in this repo.
 
+[`com.mattintech.papercase.yml`](com.mattintech.papercase.yml) is the build recipe, kept
+exactly as submitted to fdroiddata. It has no comments because F-Droid's formatter
+(`fdroid rewritemeta`) removes them and its pipeline fails if the file isn't formatted.
+Its `prebuild` step deletes the `playImplementation` line: the play flavor's Google library
+is never built, but F-Droid's scanner checks build files too.
+
 ## First submission
 
-1. Tag the release on `main`, for example `v1.1.1` (the release workflow does the rest on GitHub).
+1. Tag the release on `main`, for example `v1.2.1` (the release workflow does the rest on GitHub).
 2. Fork https://gitlab.com/fdroid/fdroiddata and add
    [`com.mattintech.papercase.yml`](com.mattintech.papercase.yml) as
    `metadata/com.mattintech.papercase.yml`.
 3. Check it locally if you have `fdroidserver` installed:
    ```bash
-   fdroid readmeta && fdroid lint com.mattintech.papercase && fdroid build -v -l com.mattintech.papercase
+   fdroid readmeta && fdroid lint com.mattintech.papercase && fdroid rewritemeta com.mattintech.papercase && fdroid build -v -l com.mattintech.papercase
    ```
 4. Open a merge request to fdroiddata using the "App inclusion" template.
 
