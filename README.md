@@ -77,12 +77,9 @@ Found a security issue? Please don't open a public issue. See [Reporting securit
 
 <p>
   <a href="https://play.google.com/store/apps/details?id=com.mattintech.papercase"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
-  <a href="https://f-droid.org/packages/com.mattintech.papercase/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="80" alt="Get it on F-Droid"></a>
 </p>
 
-Google Play and F-Droid listings are on the way; these badges will work once they're live. Until then, download `papercase-vX.Y.Z.apk` from the [latest release](https://github.com/mattintech/papercase/releases/latest) and open it on your phone to install. You may need to allow your browser or file manager to install apps.
-
-F-Droid signs its builds with its own key, so an F-Droid install can't update a GitHub or Google Play install (or the other way round). To switch, export a backup, uninstall, install the new version, and import the backup.
+The Google Play listing is on the way; the badge will work once it's live. Until then, download `papercase-vX.Y.Z.apk` from the [latest release](https://github.com/mattintech/papercase/releases/latest) and open it on your phone to install. You may need to allow your browser or file manager to install apps.
 
 To build it yourself:
 
@@ -99,7 +96,7 @@ Requires Android 12 (API 31) or newer, and JDK 17+ to build.
 
 There are two flavors with the same app ID:
 
-- **`fdroid`** contains no Google libraries and works on any Android 12+ device. This is the build on F-Droid and on the GitHub releases page.
+- **`fdroid`** contains no Google libraries and works on any Android 12+ device. This is the build on the GitHub releases page.
 - **`play`** is the Google Play build. It adds one thing: a prompt suggesting an update when Google Play has a newer version (never forced).
 
 Debug builds install as a separate app, "Papercase Debug" (`com.mattintech.papercase.debug`), so they can sit next to the store version.
