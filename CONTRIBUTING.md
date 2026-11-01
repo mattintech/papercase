@@ -4,7 +4,7 @@ Thanks for wanting to help! Papercase handles people's most sensitive documents,
 
 ## 1. Open an issue first
 
-Before you write code, [open an issue](https://github.com/mattintech/papercase/issues/new) describing what you'd like to change and why:
+Before you write code, [open an issue](https://github.com/mattintech/papercase/issues/new/choose) using the bug report or feature request form, describing what you'd like to change and why:
 
 - **Bug:** what you did, what you expected, what happened, your device and Android version. Please don't include real document details or screenshots of your documents.
 - **Feature or change:** the problem it solves and roughly how you'd approach it.
