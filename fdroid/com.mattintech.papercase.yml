@@ -1,6 +1,5 @@
-# Build recipe for F-Droid. Submit this file to https://gitlab.com/fdroid/fdroiddata
-# as metadata/com.mattintech.papercase.yml (see fdroid/README.md).
 Categories:
+  - File Encryption & Vault
   - Security
 License: GPL-3.0-only
 AuthorName: Matt Hills
@@ -14,35 +13,14 @@ RepoType: git
 Repo: https://github.com/mattintech/papercase.git
 
 Builds:
-  - versionName: 1.1.1
-    versionCode: 3
-    commit: v1.1.1
-    subdir: app
-    gradle:
-      - fdroid
-    # The play flavor's Google libraries aren't built, but F-Droid's scanner checks build files too
-    prebuild: sed -i -e '/playImplementation/d' build.gradle.kts
-
-  - versionName: 1.2.0
-    versionCode: 4
-    commit: v1.2.0
-    subdir: app
-    gradle:
-      - fdroid
-    # The play flavor's Google libraries aren't built, but F-Droid's scanner checks build files too
-    prebuild: sed -i -e '/playImplementation/d' build.gradle.kts
-
   - versionName: 1.2.1
     versionCode: 5
     commit: v1.2.1
     subdir: app
     gradle:
       - fdroid
-    # The play flavor's Google libraries aren't built, but F-Droid's scanner checks build files too
     prebuild: sed -i -e '/playImplementation/d' build.gradle.kts
 
-# F-Droid reads versionName and versionCode from app/build.gradle.kts at each tag.
-# Only plain vMAJOR.MINOR.PATCH tags are picked up; pre-release tags are skipped.
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
 CurrentVersion: 1.2.1
