@@ -32,7 +32,7 @@ class IconPickerSheet(
     private val onPhoto: ((PhotoAction) -> Unit)? = null,
     private val onChanged: (iconKey: String, colourKey: String) -> Unit = { _, _ -> }
 ) {
-    enum class PhotoAction { TAKE, CHOOSE, REMOVE }
+    enum class PhotoAction { TAKE, CHOOSE, FILES, REMOVE }
 
     private var photoAction: PhotoAction? = null
     private val dialog = SecureBottomSheetDialog(context)
@@ -107,7 +107,7 @@ class IconPickerSheet(
 
     private fun photoRow() = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
-        val actions = listOf(PhotoAction.TAKE to "Camera", PhotoAction.CHOOSE to "Gallery") +
+        val actions = listOf(PhotoAction.TAKE to "Camera", PhotoAction.CHOOSE to "Gallery", PhotoAction.FILES to "Files") +
             if (hasPhoto) listOf(PhotoAction.REMOVE to "Remove") else emptyList()
         actions.forEachIndexed { i, (action, label) ->
             addView(MaterialButton(context, null, com.google.android.material.R.attr.materialButtonTonalStyle).apply {

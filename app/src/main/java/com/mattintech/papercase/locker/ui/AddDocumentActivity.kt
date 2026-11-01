@@ -127,20 +127,24 @@ class AddDocumentActivity : AppCompatActivity() {
     private var tempPhotoUri: Uri? = null
     private var tempPhotoFile: File? = null
 
-    // Gallery picker: photos go through the crop screen
+    // Gallery and file pickers: photos go through the crop screen
     private val pickImageLauncher =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            SessionManager.isExternalOperationActive = false
-            SessionManager.keepAlive()
-            if (uri != null) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val bytes = runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
-                    withContext(Dispatchers.Main) {
-                        if (bytes != null) openCrop(bytes) else handleSelectedUri(uri)
-                    }
-                }
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> onImagePicked(uri) }
+
+    private val pickImageFileLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> onImagePicked(uri) }
+
+    private fun onImagePicked(uri: Uri?) {
+        SessionManager.isExternalOperationActive = false
+        SessionManager.keepAlive()
+        if (uri == null) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val bytes = runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (bytes != null) openCrop(bytes) else handleSelectedUri(uri)
             }
         }
+    }
 
     // Crop screen: trims a photo to just the document
     private val cropLauncher =
@@ -149,9 +153,9 @@ class AddDocumentActivity : AppCompatActivity() {
             if (bitmap != null) addPhotoBitmap(bitmap)
         }
 
-    // PDF / generic file picker
+    // PDF picker (the system file picker)
     private val pickDocumentLauncher =
-        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             SessionManager.isExternalOperationActive = false
             SessionManager.keepAlive()
             if (uri != null) handleSelectedUri(uri)
@@ -199,7 +203,7 @@ class AddDocumentActivity : AppCompatActivity() {
     /** Decodes a photo (upright, at a manageable size) and opens the crop screen. */
     private fun openCrop(bytes: ByteArray) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val bitmap = OrientedBitmap.decode(bytes)?.let(::limitSize)
+            val bitmap = OrientedBitmap.decodeForEdge(bytes, MAX_PHOTO_EDGE)?.let(::limitSize)
             withContext(Dispatchers.Main) {
                 if (bitmap != null) {
                     cropLauncher.launch(bitmap)
@@ -331,7 +335,7 @@ class AddDocumentActivity : AppCompatActivity() {
             captureFromCamera(AttachmentSlot.FRONT)
         }
         binding.btnCaptureFrontGallery.setOnClickListener {
-            pickFromGallery(AttachmentSlot.FRONT)
+            showChooseImageDialog(AttachmentSlot.FRONT)
         }
         binding.btnRemoveFront.setOnClickListener {
             frontAttachment = null
@@ -343,7 +347,7 @@ class AddDocumentActivity : AppCompatActivity() {
             captureFromCamera(AttachmentSlot.BACK)
         }
         binding.btnCaptureBackGallery.setOnClickListener {
-            pickFromGallery(AttachmentSlot.BACK)
+            showChooseImageDialog(AttachmentSlot.BACK)
         }
         binding.btnRemoveBack.setOnClickListener {
             backAttachment = null
@@ -620,11 +624,50 @@ class AddDocumentActivity : AppCompatActivity() {
         )
     }
 
+    /** The system file picker, for photos that aren't in the gallery (Downloads, Drive, a USB stick). */
+    private fun pickFromFiles(slot: AttachmentSlot, visaTitle: String = "") {
+        activeCaptureSlot = slot
+        activeVisaTitle = visaTitle
+        SessionManager.isExternalOperationActive = true
+        pickImageFileLauncher.launch(arrayOf("image/*"))
+    }
+
     private fun pickPdf(slot: AttachmentSlot = AttachmentSlot.OTHER) {
         activeCaptureSlot = slot
         activeVisaTitle = ""
         SessionManager.isExternalOperationActive = true
-        pickDocumentLauncher.launch("*/*")
+        pickDocumentLauncher.launch(arrayOf("application/pdf"))
+    }
+
+    /** Camera, gallery or files. [dismissLabel] closes the dialog without adding anything. */
+    private fun showImageSourceDialog(
+        title: String,
+        slot: AttachmentSlot,
+        visaTitle: String = "",
+        dismissLabel: String = "Cancel"
+    ) {
+        SecureAlertDialogBuilder(this)
+            .setTitle(title)
+            .setItems(arrayOf("Take photo", "Choose from gallery", "Choose from files")) { _, which ->
+                when (which) {
+                    0 -> captureFromCamera(slot, visaTitle)
+                    1 -> pickFromGallery(slot, visaTitle)
+                    else -> pickFromFiles(slot, visaTitle)
+                }
+            }
+            .setNegativeButton(dismissLabel, null)
+            .show()
+    }
+
+    /** The front/back cards only have room for a camera and a "choose" button. */
+    private fun showChooseImageDialog(slot: AttachmentSlot) {
+        SecureAlertDialogBuilder(this)
+            .setTitle("Choose a photo")
+            .setItems(arrayOf("From gallery", "From files")) { _, which ->
+                if (which == 0) pickFromGallery(slot) else pickFromFiles(slot)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showAddVisaDialog() {
@@ -636,41 +679,21 @@ class AddDocumentActivity : AppCompatActivity() {
             .setTitle("Add Passport Visa")
             .setMessage("Enter a label for this visa or travel permit:")
             .setView(input.view)
-            .setPositiveButton("Camera") { _, _ ->
+            .setPositiveButton("Next") { _, _ ->
                 val title = input.text.trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
-                captureFromCamera(AttachmentSlot.VISA, title)
-            }
-            .setNeutralButton("Gallery") { _, _ ->
-                val title = input.text.trim().ifBlank { "Visa ${visaAttachments.size + 1}" }
-                pickFromGallery(AttachmentSlot.VISA, title)
+                showImageSourceDialog("Add $title", AttachmentSlot.VISA, title)
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun showAddOtherPhotoDialog() {
-        SecureAlertDialogBuilder(this)
-            .setTitle("Add page ${pageCount() + 1}")
-            .setItems(arrayOf("Take photo", "Choose from gallery")) { _, which ->
-                if (which == 0) {
-                    captureFromCamera(AttachmentSlot.OTHER)
-                } else {
-                    pickFromGallery(AttachmentSlot.OTHER)
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        showImageSourceDialog("Add page ${pageCount() + 1}", AttachmentSlot.OTHER)
     }
 
     /** After each page: keep going for multi-page documents. */
     private fun promptNextPage() {
-        SecureAlertDialogBuilder(this)
-            .setTitle("Page ${pageCount()} added")
-            .setMessage("Add the next page of this document?")
-            .setPositiveButton("Take photo") { _, _ -> captureFromCamera(AttachmentSlot.OTHER) }
-            .setNeutralButton("Gallery") { _, _ -> pickFromGallery(AttachmentSlot.OTHER) }
-            .setNegativeButton("Done", null)
-            .show()
+        showImageSourceDialog("Page ${pageCount()} added. Add page ${pageCount() + 1}?", AttachmentSlot.OTHER, dismissLabel = "Done")
     }
 
     private fun AttachmentItem.isPdfItem() =
