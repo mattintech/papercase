@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in Papercase isn't working as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please **don't include real document details** (names, numbers, dates of birth) or screenshots of your documents. Use made-up examples instead.
+
+        Found a security issue? Please [report it privately](https://github.com/mattintech/papercase/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a folder
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Papercase version
+      description: "Tap the gear icon, then About."
+      placeholder: "1.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Where did you install it from?
+      options:
+        - Google Play
+        - GitHub release
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 8, Android 16"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Locker and documents
+        - Folders
+        - Adding photos, scanning or cropping
+        - Unlocking (fingerprint or PIN)
+        - Phone-to-phone transfer
+        - Backups (export, import or automatic)
+        - Passphrase or Quick Settings tile
+        - Expiry reminders
+        - Settings or appearance
+        - Something else
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: How often it happens, whether it started after an update, or screenshots of the problem (not of your documents).
