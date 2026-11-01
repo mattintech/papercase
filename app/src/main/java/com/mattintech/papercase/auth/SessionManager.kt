@@ -53,6 +53,20 @@ object SessionManager {
             }
         }
 
+    /**
+     * Whether the locker has no documents or folders. An empty locker is never shown as locked, and
+     * locking it isn't announced. Set by PapercaseApp; defaults to not empty so nothing opens by mistake.
+     */
+    var isLockerEmpty: () -> Boolean = { false }
+
+    /**
+     * True when the locker can be shown without asking to unlock: after a recent unlock, or when
+     * there's nothing in it. This doesn't make the locker key usable; saving into an empty locker
+     * still needs an unlock first (see [isSessionValid]).
+     */
+    fun canShowLocker(timeoutMs: Long = DEFAULT_TIMEOUT_MS): Boolean =
+        isSessionValid(timeoutMs) || isLockerEmpty()
+
     private var isInForeground: Boolean = true
     private var backgroundTimestamp: Long = 0L
     private var appContext: Context? = null
@@ -132,8 +146,7 @@ object SessionManager {
         if (backgroundTimestamp > 0L) {
             val elapsedInBackground = timeProvider() - backgroundTimestamp
             if (lastAuthTime > 0L && elapsedInBackground >= BACKGROUND_INACTIVITY_TIMEOUT_MS) {
-                lock()
-                appContext?.let { notifyLockerLocked(it) }
+                lockDueToInactivity()
             }
             backgroundTimestamp = 0L
         }
@@ -161,9 +174,14 @@ object SessionManager {
 
     fun checkAndLockDueToInactivity() {
         if (!isInForeground && lastAuthTime > 0L) {
-            lock()
-            appContext?.let { notifyLockerLocked(it) }
+            lockDueToInactivity()
         }
+    }
+
+    /** Ends the session; only tells the user when there was something to lock away. */
+    private fun lockDueToInactivity() {
+        lock()
+        if (!isLockerEmpty()) appContext?.let { notifyLockerLocked(it) }
     }
 
     fun createNotificationChannel(context: Context) {

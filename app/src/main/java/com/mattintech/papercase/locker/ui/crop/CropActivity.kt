@@ -64,7 +64,7 @@ class CropActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!SessionManager.isLockerUnlocked) finish()
+        if (!SessionManager.canShowLocker()) finish()
     }
 
     private fun finishWith(bitmap: Bitmap?) {

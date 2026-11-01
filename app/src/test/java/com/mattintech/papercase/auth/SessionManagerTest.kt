@@ -2,6 +2,7 @@ package com.mattintech.papercase.auth
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -14,6 +15,12 @@ class SessionManagerTest {
         fakeCurrentTime = 100_000L
         SessionManager.timeProvider = { fakeCurrentTime }
         SessionManager.lock()
+        SessionManager.isLockerEmpty = { false }
+    }
+
+    @After
+    fun tearDown() {
+        SessionManager.isLockerEmpty = { false }
     }
 
     @Test
@@ -110,5 +117,50 @@ class SessionManagerTest {
         fakeCurrentTime += 2 * 60 * 1000L
         SessionManager.keepAlive()
         assertFalse(SessionManager.isSessionValid())
+    }
+
+    @Test
+    fun testLockedLockerWithDocuments_cannotBeShown() {
+        assertFalse(SessionManager.canShowLocker())
+    }
+
+    @Test
+    fun testEmptyLocker_canBeShownWithoutUnlock() {
+        SessionManager.isLockerEmpty = { true }
+        assertTrue(SessionManager.canShowLocker())
+        // Showing it doesn't count as an unlock: saving into it still has to ask
+        assertFalse(SessionManager.isSessionValid())
+    }
+
+    @Test
+    fun testEmptyLocker_staysShowableAfterBackgroundTimeout() {
+        SessionManager.isLockerEmpty = { true }
+        SessionManager.markAuthenticated()
+        SessionManager.onAppEnteredBackground()
+        fakeCurrentTime += 31_000L
+        SessionManager.onAppEnteredForeground()
+        assertFalse("Session still ends", SessionManager.isLockerUnlocked)
+        assertTrue("Empty locker isn't shown locked", SessionManager.canShowLocker())
+    }
+
+    @Test
+    fun testFirstDocumentAdded_locksAgainAfterBackgroundTimeout() {
+        var empty = true
+        SessionManager.isLockerEmpty = { empty }
+        SessionManager.markAuthenticated()
+        empty = false
+        SessionManager.onAppEnteredBackground()
+        fakeCurrentTime += 31_000L
+        SessionManager.onAppEnteredForeground()
+        assertFalse(SessionManager.canShowLocker())
+    }
+
+    @Test
+    fun testEmptyLocker_validSessionStillExpires() {
+        SessionManager.isLockerEmpty = { true }
+        SessionManager.markAuthenticated()
+        fakeCurrentTime += SessionManager.MAX_AUTH_AGE_MS + 1
+        assertFalse(SessionManager.isSessionValid())
+        assertTrue(SessionManager.canShowLocker())
     }
 }
