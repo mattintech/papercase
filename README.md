@@ -17,13 +17,6 @@ Keep your passport, driver's licence, health card and other papers on your phone
 No accounts. No servers. No tracking. Your documents never leave your devices unless you send them.
 
 <p align="center">
-  <a href="https://play.google.com/store/apps/details?id=com.mattintech.papercase"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
-  <a href="https://f-droid.org/packages/com.mattintech.papercase/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="80" alt="Get it on F-Droid"></a>
-  <br>
-  <a href="https://www.buymeacoffee.com/mattintech"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="44" alt="Buy Me a Coffee"></a>
-</p>
-
-<p align="center">
   <img src="docs/screenshots/locker.png" width="270" alt="Locker with documents">
   &nbsp;
   <img src="docs/screenshots/locked.png" width="200" alt="Locked locker">
@@ -82,7 +75,14 @@ Found a security issue? Please don't open a public issue. See [Reporting securit
 
 ## Install
 
-Papercase isn't in an app store yet. F-Droid and Google Play releases are on the way; signed APKs will be attached to each [GitHub release](https://github.com/mattintech/papercase/releases).
+<p>
+  <a href="https://play.google.com/store/apps/details?id=com.mattintech.papercase"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
+  <a href="https://f-droid.org/packages/com.mattintech.papercase/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="80" alt="Get it on F-Droid"></a>
+</p>
+
+Google Play and F-Droid listings are on the way; these badges will work once they're live. Until then, download `papercase-vX.Y.Z.apk` from the [latest release](https://github.com/mattintech/papercase/releases/latest) and open it on your phone to install. You may need to allow your browser or file manager to install apps.
+
+F-Droid signs its builds with its own key, so an F-Droid install can't update a GitHub or Google Play install (or the other way round). To switch, export a backup, uninstall, install the new version, and import the backup.
 
 To build it yourself:
 
@@ -110,7 +110,9 @@ Papercase was previously called SecurePass. It's a new app ID, so data doesn't c
 
 ## Support development
 
-Papercase is free, with no ads and no tracking, and it always will be. If it's useful to you and you'd like to help cover the costs of development, you can [buy me a coffee](https://www.buymeacoffee.com/mattintech). Thank you.
+Papercase is free, with no ads and no tracking, and it always will be. If it's useful to you and you'd like to help cover the costs of development, you can buy me a coffee. Thank you.
+
+<a href="https://www.buymeacoffee.com/mattintech"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="44" alt="Buy Me a Coffee"></a>
 
 ## Contributing
 
