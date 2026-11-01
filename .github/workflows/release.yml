@@ -5,7 +5,7 @@ name: Release
 #   versionName = the tag without the leading "v"
 #   versionCode = highest versionCode on any Google Play track + 1
 # Run it manually (Actions > Release > Run workflow) to print the next versionCode
-# from Google Play, or tick "internal test" to build the chosen branch and upload
+# from Google Play (nothing is built or uploaded), or tick "internal test" to build the chosen branch and upload
 # it to Google Play's internal testing track (no tag, no GitHub release).
 on:
   push:

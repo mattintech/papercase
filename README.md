@@ -17,13 +17,6 @@ Keep your passport, driver's licence, health card and other papers on your phone
 No accounts. No servers. No tracking. Your documents never leave your devices unless you send them.
 
 <p align="center">
-  <a href="https://play.google.com/store/apps/details?id=com.mattintech.papercase"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
-  <a href="https://f-droid.org/packages/com.mattintech.papercase/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="80" alt="Get it on F-Droid"></a>
-  <br>
-  <a href="https://www.buymeacoffee.com/mattintech"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="44" alt="Buy Me a Coffee"></a>
-</p>
-
-<p align="center">
   <img src="docs/screenshots/locker.png" width="270" alt="Locker with documents">
   &nbsp;
   <img src="docs/screenshots/locked.png" width="200" alt="Locked locker">
@@ -82,7 +75,11 @@ Found a security issue? Please don't open a public issue. See [Reporting securit
 
 ## Install
 
-Papercase isn't in an app store yet. F-Droid and Google Play releases are on the way; signed APKs will be attached to each [GitHub release](https://github.com/mattintech/papercase/releases).
+<p>
+  <a href="https://play.google.com/store/apps/details?id=com.mattintech.papercase"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
+</p>
+
+The Google Play listing is on the way; the badge will work once it's live. Until then, download `papercase-vX.Y.Z.apk` from the [latest release](https://github.com/mattintech/papercase/releases/latest) and open it on your phone to install. You may need to allow your browser or file manager to install apps.
 
 To build it yourself:
 
@@ -99,7 +96,7 @@ Requires Android 12 (API 31) or newer, and JDK 17+ to build.
 
 There are two flavors with the same app ID:
 
-- **`fdroid`** contains no Google libraries and works on any Android 12+ device. This is the build on F-Droid and on the GitHub releases page.
+- **`fdroid`** contains no Google libraries and works on any Android 12+ device. This is the build on the GitHub releases page.
 - **`play`** is the Google Play build. It adds one thing: a prompt suggesting an update when Google Play has a newer version (never forced).
 
 Debug builds install as a separate app, "Papercase Debug" (`com.mattintech.papercase.debug`), so they can sit next to the store version.
@@ -110,7 +107,9 @@ Papercase was previously called SecurePass. It's a new app ID, so data doesn't c
 
 ## Support development
 
-Papercase is free, with no ads and no tracking, and it always will be. If it's useful to you and you'd like to help cover the costs of development, you can [buy me a coffee](https://www.buymeacoffee.com/mattintech). Thank you.
+Papercase is free, with no ads and no tracking, and it always will be. If it's useful to you and you'd like to help cover the costs of development, you can buy me a coffee. Thank you.
+
+<a href="https://www.buymeacoffee.com/mattintech"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="44" alt="Buy Me a Coffee"></a>
 
 ## Contributing
 
