@@ -82,7 +82,9 @@ Found a security issue? Please don't open a public issue. See [Reporting securit
 
 ## Install
 
-Papercase isn't in an app store yet. F-Droid and Google Play releases are on the way; signed APKs will be attached to each [GitHub release](https://github.com/mattintech/papercase/releases).
+Download `papercase-vX.Y.Z.apk` from the [latest release](https://github.com/mattintech/papercase/releases/latest) and open it on your phone to install. You may need to allow your browser or file manager to install apps.
+
+Google Play and F-Droid listings are on the way; the badges above will work once they're live. F-Droid signs its builds with its own key, so an F-Droid install can't update a GitHub or Google Play install (or the other way round). To switch, export a backup, uninstall, install the new version, and import the backup.
 
 To build it yourself:
 
