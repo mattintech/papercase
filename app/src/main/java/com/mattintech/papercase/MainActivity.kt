@@ -66,6 +66,7 @@ import com.mattintech.papercase.locker.transfer.VaultConflictReport
 import com.mattintech.papercase.locker.transfer.VaultExportImportManager
 import com.mattintech.papercase.locker.ui.AddDocumentActivity
 import com.mattintech.papercase.locker.ui.DocumentViewerActivity
+import com.mattintech.papercase.locker.ui.IconPickerSheet
 import com.mattintech.papercase.locker.ui.ImageMetadataStripper
 import com.mattintech.papercase.locker.ui.LockerActions
 import com.mattintech.papercase.locker.ui.LockerAdapter
@@ -148,23 +149,28 @@ class MainActivity : AppCompatActivity() {
         }
 
     private val folderPhotoGalleryLauncher =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            SessionManager.isExternalOperationActive = false
-            SessionManager.keepAlive()
-            if (uri == null) {
-                onFolderPhotoPicked = null
-                return@registerForActivityResult
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> onFolderPhotoUri(uri) }
+
+    private val folderPhotoFileLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> onFolderPhotoUri(uri) }
+
+    private fun onFolderPhotoUri(uri: android.net.Uri?) {
+        SessionManager.isExternalOperationActive = false
+        SessionManager.keepAlive()
+        if (uri == null) {
+            onFolderPhotoPicked = null
+            return
+        }
+        lifecycleScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
             }
-            lifecycleScope.launch {
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
-                }
-                if (bytes != null) cropFolderPhoto(bytes) else {
-                    onFolderPhotoPicked = null
-                    Toast.makeText(this@MainActivity, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
-                }
+            if (bytes != null) cropFolderPhoto(bytes) else {
+                onFolderPhotoPicked = null
+                Toast.makeText(this@MainActivity, "Couldn't read that photo", Toast.LENGTH_SHORT).show()
             }
         }
+    }
 
     private val folderPhotoCropLauncher =
         registerForActivityResult(CropActivity.Contract()) { bitmap ->
@@ -670,7 +676,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Decodes a photo upright and at a manageable size, then opens the crop screen to frame it. */
     private suspend fun cropFolderPhoto(bytes: ByteArray) {
-        val bitmap = withContext(Dispatchers.Default) { OrientedBitmap.decode(bytes)?.let(ImageMetadataStripper::shrink) }
+        val bitmap = withContext(Dispatchers.Default) { OrientedBitmap.decodeForEdge(bytes, ImageMetadataStripper.MAX_EDGE)?.let(ImageMetadataStripper::shrink) }
         if (bitmap != null) {
             folderPhotoCropLauncher.launch(bitmap)
         } else {
@@ -689,14 +695,18 @@ class MainActivity : AppCompatActivity() {
                 SessionManager.isExternalOperationActive = true
                 pickSaveFolderLauncher.launch(null)
             },
-            pickPhoto = { camera, onPicked ->
+            pickPhoto = { source, onPicked ->
                 onFolderPhotoPicked = onPicked
                 when {
-                    !camera -> {
+                    source == IconPickerSheet.PhotoAction.CHOOSE -> {
                         SessionManager.isExternalOperationActive = true
                         folderPhotoGalleryLauncher.launch(
                             androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
+                    }
+                    source == IconPickerSheet.PhotoAction.FILES -> {
+                        SessionManager.isExternalOperationActive = true
+                        folderPhotoFileLauncher.launch(arrayOf("image/*"))
                     }
                     ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED ->
                         launchFolderPhotoCamera()

@@ -36,13 +36,13 @@ import javax.crypto.SecretKey
  * device, move, edit, delete), folder options, and the folder picker.
  *
  * [pickSaveFolder] opens the system folder picker and calls back with the chosen folder.
- * [pickPhoto] opens the camera (or the gallery), then the crop screen, and calls back with the photo.
+ * [pickPhoto] opens the camera, gallery or file picker, then the crop screen, and calls back with the photo.
  */
 class LockerActions(
     private val activity: AppCompatActivity,
     private val repository: SecureLockerRepository,
     private val pickSaveFolder: (onPicked: (Uri) -> Unit) -> Unit,
-    private val pickPhoto: (camera: Boolean, onPicked: (Bitmap) -> Unit) -> Unit,
+    private val pickPhoto: (source: IconPickerSheet.PhotoAction, onPicked: (Bitmap) -> Unit) -> Unit,
     private val onChanged: () -> Unit
 ) {
 
@@ -275,7 +275,7 @@ class LockerActions(
             launch { repository.saveFolder(folder.copy(photo = "")) }
             return
         }
-        pickPhoto(action == IconPickerSheet.PhotoAction.TAKE) { bitmap ->
+        pickPhoto(action) { bitmap ->
             launch {
                 val photo = withContext(Dispatchers.Default) { FolderPhoto.encode(bitmap) }
                 // Re-read so a change made while the camera was open isn't lost

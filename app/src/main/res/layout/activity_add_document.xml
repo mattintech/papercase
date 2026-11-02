@@ -484,7 +484,7 @@
                                     android:layout_width="48dp"
                                     android:layout_height="48dp"
                                     android:layout_marginStart="6dp"
-                                    android:contentDescription="Choose from Gallery"
+                                    android:contentDescription="Choose a photo"
                                     app:icon="@drawable/ic_image"
                                     app:iconSize="22dp" />
 
@@ -620,7 +620,7 @@
                                     android:layout_width="48dp"
                                     android:layout_height="48dp"
                                     android:layout_marginStart="6dp"
-                                    android:contentDescription="Choose from Gallery"
+                                    android:contentDescription="Choose a photo"
                                     app:icon="@drawable/ic_image"
                                     app:iconSize="22dp" />
 

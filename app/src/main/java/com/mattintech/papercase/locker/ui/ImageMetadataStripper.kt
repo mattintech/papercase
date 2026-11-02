@@ -28,7 +28,7 @@ object ImageMetadataStripper {
 
     fun strip(bytes: ByteArray, mimeType: String, fileName: String): Result {
         if (!mimeType.startsWith("image/")) return Result(bytes, mimeType, fileName)
-        val bitmap = OrientedBitmap.decode(bytes)?.let(::shrink) ?: return Result(bytes, mimeType, fileName)
+        val bitmap = OrientedBitmap.decodeForEdge(bytes, MAX_EDGE)?.let(::shrink) ?: return Result(bytes, mimeType, fileName)
 
         val keepPng = mimeType == "image/png"
         val out = ByteArrayOutputStream()

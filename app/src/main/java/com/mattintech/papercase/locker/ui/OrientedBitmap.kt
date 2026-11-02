@@ -12,6 +12,20 @@ import java.io.ByteArrayInputStream
  */
 object OrientedBitmap {
 
+    /**
+     * Like [decode], but skips pixels while decoding so the result isn't much bigger than [maxEdge].
+     * Decoding a 200 MP photo at full size needs about 800 MB, more than Android gives an app.
+     */
+    fun decodeForEdge(bytes: ByteArray, maxEdge: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        if (longest <= 0) return null
+        var sample = 1
+        while (longest / (sample * 2) >= maxEdge) sample *= 2
+        return decode(bytes, sample)
+    }
+
     /** [sampleSize] > 1 decodes a smaller image (e.g. 4 = a quarter of the width and height). */
     fun decode(bytes: ByteArray, sampleSize: Int = 1): Bitmap? {
         val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
