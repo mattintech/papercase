@@ -270,7 +270,8 @@ class AddDocumentActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!SessionManager.isLockerUnlocked) {
+        // An empty locker opens without unlocking, so the first document can be filled in before it
+        if (!SessionManager.canShowLocker()) {
             finish()
         }
     }
@@ -954,6 +955,14 @@ class AddDocumentActivity : AppCompatActivity() {
         val notes = binding.etNotes.text?.toString()?.trim().orEmpty()
         val docType = getSelectedDocumentType()
 
+        // First document in an empty locker: nothing was unlocked yet, and the locker key needs it now
+        if (!SessionManager.isLockerUnlocked && SessionManager.isLockerEmpty() &&
+            BiometricAuthHelper.getDeviceSecurityLevel(this).isProtected
+        ) {
+            unlockAndRetrySave(subtitle = "Confirm it's you to add this document to your locker.")
+            return
+        }
+
         binding.btnSaveDocument.isEnabled = false
 
         lifecycleScope.launch {
@@ -1096,11 +1105,13 @@ class AddDocumentActivity : AppCompatActivity() {
         }
     }
 
-    private fun unlockAndRetrySave() {
+    private fun unlockAndRetrySave(
+        subtitle: String = "The locker locked while you were editing. Your changes are kept."
+    ) {
         BiometricAuthHelper.promptGeneralUnlock(
             activity = this,
             title = "Unlock to save",
-            subtitle = "The locker locked while you were editing. Your changes are kept.",
+            subtitle = subtitle,
             onSuccess = {
                 SessionManager.markAuthenticated()
                 validateAndSave()

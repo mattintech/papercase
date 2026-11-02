@@ -289,11 +289,31 @@ class LockerActions(
         promptFolderName("New folder", "") { name ->
             val folder = Folder(name = name, parentId = parentId)
             // Saved before anything (like a move) uses it, so the two writes don't overlap
-            launch {
-                repository.saveFolder(folder)
-                onCreated(folder)
+            whenKeyUsable("Confirm it's you to create this folder") {
+                launch {
+                    repository.saveFolder(folder)
+                    onCreated(folder)
+                }
             }
         }
+    }
+
+    /**
+     * An empty locker is shown without unlocking, so the first folder may be created before the
+     * locker key is usable. Ask for fingerprint / PIN then; otherwise just carry on.
+     */
+    private fun whenKeyUsable(subtitle: String, action: () -> Unit) {
+        if (SessionManager.isLockerUnlocked || !BiometricAuthHelper.getDeviceSecurityLevel(activity).isProtected) return action()
+        BiometricAuthHelper.promptGeneralUnlock(
+            activity = activity,
+            title = "Unlock Locker",
+            subtitle = subtitle,
+            onSuccess = {
+                SessionManager.markAuthenticated()
+                action()
+            },
+            onError = { _, _ -> }
+        )
     }
 
     private fun promptFolderName(title: String, initial: String, onName: (String) -> Unit) {

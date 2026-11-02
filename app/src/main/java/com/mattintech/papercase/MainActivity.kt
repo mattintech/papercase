@@ -362,6 +362,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun getSessionTimeoutMs(): Long = prefs.lockerTimeoutMinutes * 60 * 1000L
 
+    /** A real unlock this session, so the locker key is usable. */
+    private fun hasUnlockedSession(): Boolean =
+        isLockerUnlocked || SessionManager.isSessionValid(getSessionTimeoutMs())
+
+    /**
+     * Nothing in the locker, so it opens without asking to unlock. A document waiting to be opened
+     * (e.g. from a reminder) means there is something after all, so that still asks.
+     */
+    private fun opensWithoutUnlock(): Boolean =
+        pendingOpenDocumentId == null && lockerRepository.isKnownEmpty()
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -377,11 +388,13 @@ class MainActivity : AppCompatActivity() {
             pendingOpenDocumentId = id
             if (isLockerUnlocked && binding.layoutLockerContent.visibility == View.VISIBLE) {
                 openPendingDocument()
-            } else if (appAlreadyOpen) {
+            } else if (appAlreadyOpen || binding.layoutLockerContent.visibility == View.VISIBLE) {
+                // (Also when a fresh start opened a seemingly empty locker without unlocking: the
+                // document says otherwise, so ask now)
                 binding.bottomNavigation.menu.findItem(R.id.nav_locker)?.isChecked = true
                 showLockerTab(promptIfLocked = true)
             }
-            // On a fresh start the locker tab is already showing and asking to unlock
+            // On a fresh start the locker tab is otherwise already showing and asking to unlock
             return
         }
 
@@ -887,6 +900,12 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Empty locker: nothing to protect yet. Adding the first document or folder asks to unlock then.
+        if (opensWithoutUnlock()) {
+            displayLockerTab()
+            return
+        }
+
         // No biometric / screen lock on this device: nothing to unlock with
         if (BiometricAuthHelper.checkBiometricAvailability(this) !is BiometricAuthHelper.BiometricStatus.Ready) {
             SessionManager.markAuthenticated()
@@ -904,7 +923,11 @@ class MainActivity : AppCompatActivity() {
         val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
         popup.menuInflater.inflate(R.menu.menu_toolbar_settings, popup.menu)
         popup.setForceShowIcon(true)
-        popup.menu.findItem(R.id.action_lock).isEnabled = isLockerUnlocked
+        popup.menu.findItem(R.id.action_lock).apply {
+            isEnabled = isLockerUnlocked
+            // An empty locker is never shown locked, so there's nothing to lock
+            isVisible = !lockerRepository.isKnownEmpty()
+        }
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_transfer -> withLockerUnlocked("Unlock to transfer or back up") { showVaultTransferOptions() }
@@ -945,7 +968,8 @@ class MainActivity : AppCompatActivity() {
         folders = emptyList()
         lockerAdapter.submitList(emptyList())
         thumbnailLoader.clear()
-        if (binding.layoutSecureLocker.visibility == View.VISIBLE) showLockedLocker()
+        if (binding.layoutSecureLocker.visibility != View.VISIBLE) return
+        if (opensWithoutUnlock()) displayLockerTab() else showLockedLocker()
     }
 
     private fun promptLockerUnlock() {
@@ -972,6 +996,12 @@ class MainActivity : AppCompatActivity() {
         binding.fabAddDocument.show()
         binding.tvToolbarTitle.text = "Locker"
         applyLockerLayout()
+        if (!hasUnlockedSession()) {
+            // Empty locker shown without an unlock: the key isn't usable, and there's nothing to
+            // decrypt, migrate or back up yet
+            loadSecureLockerDocuments()
+            return
+        }
         migrateLockerKeyIfNeeded()
         // The locker key is usable right now: bring the automatic backup snapshot up to date
         lifecycleScope.launch { AutoBackupManager.refreshIfNeeded(this@MainActivity) }
@@ -1020,7 +1050,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleLockerLocked() {
         lockLockerInPlace()
-        Toast.makeText(this, "Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+        if (!lockerRepository.isKnownEmpty()) {
+            Toast.makeText(this, "Locker locked. Unlock again to continue.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showLockerKeyLostDialog() {
@@ -1046,6 +1078,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadSecureLockerDocuments() {
         lifecycleScope.launch {
+            if (!hasUnlockedSession() && lockerRepository.isKnownEmpty()) {
+                // Nothing to show, and reading the catalog would need an unlock
+                if (lockerRepository.isKeyLost()) {
+                    // Android deleted the key (e.g. the screen lock was removed). Nothing was stored
+                    // with it, so start a fresh locker instead of failing on the first save.
+                    lockerRepository.resetAfterKeyLoss()
+                }
+                allDocuments = emptyList()
+                folders = emptyList()
+                renderLocker()
+                return@launch
+            }
             allDocuments = try {
                 folders = lockerRepository.getFolders()
                 lockerRepository.getAllDocuments()

@@ -11,6 +11,7 @@ import com.mattintech.papercase.data.PreferencesManager
 import com.mattintech.papercase.locker.backup.AutoBackupManager
 import com.mattintech.papercase.locker.backup.DailyWorker
 import com.mattintech.papercase.locker.reminders.ReminderNotifier
+import com.mattintech.papercase.locker.repository.SecureLockerRepository
 
 class PapercaseApp : Application() {
 
@@ -29,6 +30,8 @@ class PapercaseApp : Application() {
         ClipboardSecurityManager.createNotificationChannel(this)
         ReminderNotifier.createChannel(this)
         SessionManager.init(this)
+        val lockerRepository = SecureLockerRepository(this)
+        SessionManager.isLockerEmpty = { lockerRepository.isKnownEmpty() }
         DailyWorker.schedule(this)
         getSharedPreferences(PreferencesManager.NAME, MODE_PRIVATE).registerOnSharedPreferenceChangeListener(settingsListener)
 

@@ -43,6 +43,20 @@ class SecureLockerRepository(private val context: Context) {
             }
             return map
         }
+
+        /**
+         * Whether a catalog file says the locker has no documents and no folders. The flag sits next to
+         * the ciphertext so it can be read without the auth-bound key. Catalogs written before the flag
+         * existed count as not empty, so they stay locked until their next save.
+         */
+        fun isEmptyCatalog(wrapperJson: String?): Boolean {
+            if (wrapperJson == null) return true
+            return runCatching { JSONObject(wrapperJson).optBoolean("empty", false) }.getOrDefault(false)
+        }
+
+        // Last emptiness read, keyed by the catalog's size and time so it's only re-read after a write
+        @Volatile
+        private var emptyCache: Triple<Long, Long, Boolean>? = null
     }
 
     private val lockerDir = File(context.filesDir, "locker").apply { if (!exists()) mkdirs() }
@@ -77,6 +91,26 @@ class SecureLockerRepository(private val context: Context) {
 
     /** True once the locker has been created on this device (even if it's now empty). */
     fun exists(): Boolean = catalogFile.exists()
+
+    /**
+     * True when the locker has no documents or folders (or doesn't exist yet), so there's nothing to
+     * unlock. Read without decrypting. The flag isn't authenticated, but nothing is decrypted on its
+     * word: a wrong flag only shows an empty list, and saving still needs the key and the real catalog.
+     */
+    fun isKnownEmpty(): Boolean {
+        if (!catalogFile.exists()) return true
+        val length = catalogFile.length()
+        val modified = catalogFile.lastModified()
+        emptyCache?.let { (l, m, empty) -> if (l == length && m == modified) return empty }
+        val empty = isEmptyCatalog(runCatching { catalogFile.readText() }.getOrDefault("{}"))
+        emptyCache = Triple(length, modified, empty)
+        return empty
+    }
+
+    /** True when the catalog needs the auth-bound key but Android has deleted it. */
+    fun isKeyLost(): Boolean =
+        catalogKeyVersion() == LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND &&
+            !LockerKeystoreHelper.hasKey(LockerKeystoreHelper.KEY_VERSION_AUTH_BOUND)
 
     /** True when the locker still uses the key that works without authentication. */
     fun needsAuthBoundMigration(): Boolean =
@@ -143,6 +177,8 @@ class SecureLockerRepository(private val context: Context) {
             put("ciphertext", cipherBase64)
             put("iv", ivBase64)
             put("keyVersion", version)
+            // Readable without the key, so an empty locker can be shown without unlocking
+            put("empty", catalog.documents.isEmpty() && catalog.folders.isEmpty())
         }
         val tempFile = File(lockerDir, "catalog.enc.tmp")
         tempFile.writeText(wrapper.toString())
